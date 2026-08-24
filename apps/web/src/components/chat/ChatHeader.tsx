@@ -32,6 +32,7 @@ import ProjectScriptsControl, {
   type ProjectScriptActionResult,
 } from "../ProjectScriptsControl";
 import { OpenInPicker } from "./OpenInPicker";
+import { SessionLinkedTask } from "../tasks/SessionLinkedTask";
 import { useRemoteOpenState, type RemoteOpenMode } from "../../remoteOpen";
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { useT3ProjectFileScripts } from "~/hooks/useT3ProjectFileScripts";
@@ -56,6 +57,7 @@ interface ChatHeaderProps {
   /** PR feeding the settled classification, resolved by ChatView. */
   changeRequest: ChangeRequestSettleSource | null;
   activeProjectName: string | undefined;
+  activeProjectId: string | undefined;
   activeProjectCwd: string | null;
   activeProjectFaviconPath: string | null;
   openInCwd: string | null;
@@ -125,6 +127,7 @@ export const ChatHeader = memo(function ChatHeader({
   isServerThread,
   changeRequest,
   activeProjectName,
+  activeProjectId,
   activeProjectCwd,
   activeProjectFaviconPath,
   openInCwd,
@@ -380,6 +383,13 @@ export const ChatHeader = memo(function ChatHeader({
           rightPanelOpen ? "pr-0" : "pr-16",
         )}
       >
+        {activeProjectId ? (
+          <SessionLinkedTask
+            environmentId={activeThreadEnvironmentId}
+            projectId={activeProjectId}
+            threadId={activeThreadId}
+          />
+        ) : null}
         {activeProjectScripts && (
           <ProjectScriptsControl
             scripts={activeProjectScripts}

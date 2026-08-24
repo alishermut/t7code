@@ -11,6 +11,7 @@ This is a living glossary for T3 Code. It explains what common terms mean in thi
 - [Orchestration](#orchestration)
 - [Provider runtime](#provider-runtime)
 - [Checkpointing](#checkpointing)
+- [Project tasks](#project-tasks)
 
 ## Concepts
 
@@ -140,6 +141,16 @@ The patch difference between two checkpoints. Query logic lives in [CheckpointDi
 
 The file patch and changed-file summary for one turn. It is usually computed in [CheckpointDiffQuery.ts][20], represented in [the contracts][1], and recorded into thread state by [projector.ts][4].
 
+### Project tasks
+
+The environment-local **project backlog**, distinct from turn-local provider todos.
+
+Turn-local todos (`TodoWrite`, Cursor `update_todos`, Codex `update_plan`) flatten to `turn.plan.updated` and live in [ThreadPlanProgress.ts][25] for the current turn only. Project tasks persist in userdata `project-tasks.json`, are exposed on the `t3-code` MCP server as `tasks_*`, and are edited from the Tasks page. See [projectTasks.ts][26] and [ProjectTaskStore.ts][27].
+
+#### Project task
+
+A durable goal or child task scoped to a project. Statuses are `open`, `doing`, `blocked`, and `done`. A task may nest under a parent and may be claimed by a thread.
+
 ## Practical Shortcuts
 
 - If you see `requested`, think "intent recorded".
@@ -179,3 +190,6 @@ The file patch and changed-file summary for one turn. It is usually computed in 
 [22]: ../../apps/server/src/checkpointing/Utils.ts
 [23]: ../../apps/server/src/checkpointing/Diffs.ts
 [24]: ./overview.md
+[25]: ../../apps/server/src/orchestration/ThreadPlanProgress.ts
+[26]: ../../packages/contracts/src/projectTasks.ts
+[27]: ../../apps/server/src/projectTasks/ProjectTaskStore.ts

@@ -3,8 +3,15 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   clampPreviewMiniPlayerPosition,
   clampPreviewMiniPlayerSize,
+  PREVIEW_MINI_PLAYER_DEFAULT_SIZE,
   PREVIEW_MINI_PLAYER_EDGE_GAP,
 } from "./previewMiniPlayerLayout";
+
+describe("preview mini-player size", () => {
+  it("defaults to a compact popup", () => {
+    expect(PREVIEW_MINI_PLAYER_DEFAULT_SIZE).toEqual({ width: 200, height: 125 });
+  });
+});
 
 describe("clampPreviewMiniPlayerPosition", () => {
   it("keeps a dragged player within the chat viewport", () => {

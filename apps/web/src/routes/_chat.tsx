@@ -21,6 +21,7 @@ import { selectActiveRightPanel, useRightPanelStore } from "../rightPanelStore";
 import { useThreadSelectionStore } from "../threadSelectionStore";
 import { stackedThreadToast, toastManager } from "~/components/ui/toast";
 import { primaryServerKeybindingsAtom } from "~/state/server";
+import { useUiStateStore } from "../uiStateStore";
 
 function ChatRouteGlobalShortcuts() {
   const clearSelection = useThreadSelectionStore((state) => state.clearSelection);
@@ -55,6 +56,9 @@ function ChatRouteGlobalShortcuts() {
       ? selectActiveRightPanel(state.byThreadKey, routeThreadRef) === "preview"
       : false,
   );
+  const workspaceMode = useUiStateStore((state) => state.workspaceMode);
+  const workspaceLeftPane = useUiStateStore((state) => state.workspaceLeftPane);
+  const setWorkspaceLeftPane = useUiStateStore((state) => state.setWorkspaceLeftPane);
   useEffect(() => {
     const onWindowKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
@@ -68,6 +72,21 @@ function ChatRouteGlobalShortcuts() {
       });
 
       if (isCommandPaletteOpen()) {
+        return;
+      }
+
+      if (
+        event.key === "Tab" &&
+        event.shiftKey &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        workspaceMode !== "agent" &&
+        !isTerminalFocused()
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        setWorkspaceLeftPane(workspaceLeftPane === "sessions" ? "chat" : "sessions");
         return;
       }
 
@@ -93,9 +112,10 @@ function ChatRouteGlobalShortcuts() {
         event.preventDefault();
         event.stopPropagation();
         // The default sidebar routes creation through the command palette
-        // whenever there is a real choice to make; the legacy sidebar (and
-        // single-project setups) keep the immediate contextual create.
-        if (!legacySidebarEnabled && projectGroupCount > 1) {
+        // whenever there is a real choice to make (zero projects or more
+        // than one). The legacy sidebar and single-project setups keep the
+        // immediate contextual create.
+        if (!legacySidebarEnabled && projectGroupCount !== 1) {
           openCommandPalette({ open: "new-thread-in" });
           return;
         }
@@ -168,7 +188,10 @@ function ChatRouteGlobalShortcuts() {
     routeThreadRef,
     selectedThreadKeysSize,
     legacySidebarEnabled,
+    setWorkspaceLeftPane,
     terminalOpen,
+    workspaceLeftPane,
+    workspaceMode,
   ]);
 
   return null;

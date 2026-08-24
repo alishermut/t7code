@@ -45,6 +45,7 @@ import {
   PaletteIcon,
   ServerIcon,
   SettingsIcon,
+  ListTodoIcon,
   SquarePenIcon,
   TextSearchIcon,
 } from "lucide-react";
@@ -115,8 +116,10 @@ import {
   browseInputEndPaddingClass,
   buildBrowseGroups,
   buildProjectActionItems,
+  buildProjectPickerGroups,
   buildRootGroups,
   buildThreadActionItems,
+  compareActivityTimestamps,
   enumerateCommandPaletteItems,
   type CommandPaletteActionItem,
   type CommandPaletteOpenIntent,
@@ -126,7 +129,10 @@ import {
   filterPinnedBrowseEntries,
   getCommandPaletteInputPlaceholder,
   getCommandPaletteMode,
+  isProjectPickerView,
   ITEM_ICON_CLASS,
+  latestActivityTimestamp,
+  PROJECT_PICKER_PROJECTS_GROUP,
   RECENT_THREAD_LIMIT,
   reduceCommandPaletteUiState,
   type SearchOverlayMode,
@@ -639,6 +645,9 @@ function OpenCommandPaletteDialog(props: {
     null,
   );
   const [isPickingProjectFolder, setIsPickingProjectFolder] = useState(false);
+  const pickProjectFolderForEnvironmentRef = useRef<
+    (environmentId: EnvironmentId) => Promise<void>
+  >(async () => {});
   const [addProjectCloneFlow, setAddProjectCloneFlow] = useState<AddProjectCloneFlow | null>(null);
   const [isRemoteProjectLookingUp, setIsRemoteProjectLookingUp] = useState(false);
   const [isRemoteProjectCloning, setIsRemoteProjectCloning] = useState(false);
@@ -845,7 +854,8 @@ function OpenCommandPaletteDialog(props: {
     () => getFilesystemBrowsePath(query, browseEnvironmentPlatform, !isRemoteProjectRepositoryStep),
     [browseEnvironmentPlatform, isRemoteProjectRepositoryStep, query],
   );
-  const isBrowsing = browsePath.isBrowsing;
+  const isProjectPicker = isProjectPickerView(currentView);
+  const isBrowsing = browsePath.isBrowsing && !isProjectPicker;
   const browseDirectoryPath = browsePath.directoryPath;
   const paletteMode = getCommandPaletteMode({ currentView, isBrowsing });
   const getAddProjectInitialQueryForEnvironment = useCallback(
@@ -1080,6 +1090,30 @@ function OpenCommandPaletteDialog(props: {
       projectGroupByTargetKey,
     ],
   );
+  const rankedProjectThreadItems = useMemo(() => {
+    const activityByValue = new Map<string, string | null>();
+    for (const entry of projectPickerEntries) {
+      activityByValue.set(
+        `new-thread-in:${entry.targetProject.environmentId}:${entry.targetProject.id}`,
+        latestActivityTimestamp({
+          projectKeys: new Set(
+            entry.group.memberProjectRefs.map(
+              (projectRef) => `${projectRef.environmentId}:${projectRef.projectId}`,
+            ),
+          ),
+          threads,
+        }),
+      );
+    }
+    return enumerateCommandPaletteItems(
+      [...projectThreadItems].sort((left, right) =>
+        compareActivityTimestamps(
+          activityByValue.get(left.value) ?? null,
+          activityByValue.get(right.value) ?? null,
+        ),
+      ),
+    );
+  }, [projectPickerEntries, projectThreadItems, threads]);
 
   const allThreadItems = useMemo(
     () =>
@@ -1228,6 +1262,133 @@ function OpenCommandPaletteDialog(props: {
     ],
   );
 
+  const canPickFolderNatively = useCallback(
+    (environmentId: EnvironmentId): boolean => {
+      if (typeof window === "undefined" || window.desktopBridge === undefined) {
+        return false;
+      }
+      if (environmentId === primaryEnvironmentId) {
+        return true;
+      }
+      const environment = environments.find(
+        (candidate) => candidate.environmentId === environmentId,
+      );
+      if (!environment || !isDesktopLocalConnectionTarget(environment.entry.target)) {
+        return false;
+      }
+      const displayUrl = environment.displayUrl;
+      if (displayUrl === null) {
+        return false;
+      }
+      return desktopLocalBootstraps.some((bootstrap) => bootstrap.httpBaseUrl === displayUrl);
+    },
+    [desktopLocalBootstraps, environments, primaryEnvironmentId],
+  );
+
+  const startBrowseForEnvironment = useCallback(
+    async (environmentId: EnvironmentId): Promise<void> => {
+      const environment = environments.find(
+        (candidate) => candidate.environmentId === environmentId,
+      );
+      if (!canCreateProjectInEnvironment(environment?.connection.phase)) {
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Environment unavailable",
+            description: `${environment?.label ?? "The selected environment"} is not connected.`,
+          }),
+        );
+        return;
+      }
+      setAddProjectEnvironmentId(environmentId);
+      if (canPickFolderNatively(environmentId)) {
+        await pickProjectFolderForEnvironmentRef.current(environmentId);
+        return;
+      }
+      await startAddProjectBrowse(environmentId);
+    },
+    [canPickFolderNatively, environments, startAddProjectBrowse],
+  );
+
+  const openProjectPicker = useCallback(() => {
+    browseNavigation.invalidate();
+    setAddProjectCloneFlow(null);
+    setAddProjectEnvironmentId(null);
+    setHighlightedItemValue(null);
+    setQuery("");
+    setViewStack([
+      {
+        addonIcon: <SquarePenIcon className={ADDON_ICON_CLASS} />,
+        groups: [{ value: PROJECT_PICKER_PROJECTS_GROUP, label: "Recent", items: [] }],
+      },
+    ]);
+  }, [browseNavigation]);
+
+  const connectedAddProjectEnvironments = addProjectEnvironmentOptions.filter(
+    (option) => option.isConnected,
+  );
+  const nativeFolderPickerAvailable = connectedAddProjectEnvironments.some((option) =>
+    canPickFolderNatively(option.environmentId),
+  );
+  const fileManagerName = getLocalFileManagerName(navigator.platform);
+  const projectPickerBrowseItem = useMemo<CommandPaletteActionItem>(
+    () => ({
+      kind: "action",
+      value: "action:project-picker-browse",
+      searchTerms: ["browse", "folder", "directory", "open", "explorer", "finder", "files"],
+      title: "Browse...",
+      description: nativeFolderPickerAvailable
+        ? `Open ${fileManagerName}`
+        : "Browse a folder on disk",
+      icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
+      keepOpen: true,
+      run: async () => {
+        if (connectedAddProjectEnvironments.length === 0) {
+          toastManager.add(
+            stackedThreadToast({
+              type: "error",
+              title: "Unable to browse projects",
+              description: "No environment is available.",
+            }),
+          );
+          return;
+        }
+        if (connectedAddProjectEnvironments.length > 1) {
+          pushPaletteView({
+            addonIcon: <FolderPlusIcon className={ADDON_ICON_CLASS} />,
+            groups: [
+              {
+                value: "browse-environments",
+                label: "Environments",
+                items: connectedAddProjectEnvironments.map((option) => ({
+                  kind: "action" as const,
+                  value: `action:browse-environment:${option.environmentId}`,
+                  searchTerms: [option.label, option.environmentId],
+                  title: option.label,
+                  description: option.isPrimary ? "This device" : option.environmentId,
+                  icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
+                  keepOpen: true,
+                  run: async () => {
+                    await startBrowseForEnvironment(option.environmentId);
+                  },
+                })),
+              },
+            ],
+          });
+          return;
+        }
+        await startBrowseForEnvironment(connectedAddProjectEnvironments[0]!.environmentId);
+      },
+    }),
+    [
+      connectedAddProjectEnvironments,
+      fileManagerName,
+      nativeFolderPickerAvailable,
+      pushPaletteView,
+      startBrowseForEnvironment,
+    ],
+  );
+
   const startAddProjectClone = useCallback(
     (environmentId: EnvironmentId, source: AddProjectRemoteSource): void => {
       setAddProjectEnvironmentId(environmentId);
@@ -1251,20 +1412,7 @@ function OpenCommandPaletteDialog(props: {
       environmentId: EnvironmentId,
       readinessBySource: AddProjectRemoteSourceReadiness,
     ): CommandPaletteView["groups"] => {
-      const sourceItems: Array<CommandPaletteActionItem | CommandPaletteSubmenuItem> = [
-        {
-          kind: "action",
-          value: `action:add-project:${environmentId}:local`,
-          searchTerms: ["local", "folder", "directory", "browse"],
-          title: "Local folder",
-          description: "Browse a folder on disk",
-          icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
-          keepOpen: true,
-          run: async () => {
-            await startAddProjectBrowse(environmentId);
-          },
-        },
-      ];
+      const sourceItems: Array<CommandPaletteActionItem | CommandPaletteSubmenuItem> = [];
 
       const orderedSources: ReadonlyArray<AddProjectRemoteSource> = [
         "url",
@@ -1337,7 +1485,7 @@ function OpenCommandPaletteDialog(props: {
 
       return [{ value: `sources:${environmentId}`, label: "Sources", items: sourceItems }];
     },
-    [openSourceControlSettings, startAddProjectBrowse, startAddProjectClone],
+    [openSourceControlSettings, startAddProjectClone],
   );
 
   const startAddProjectSourceSelection = useCallback(
@@ -1407,7 +1555,7 @@ function OpenCommandPaletteDialog(props: {
     [addProjectEnvironmentItems],
   );
 
-  const openAddProjectFlow = useCallback(() => {
+  const openCloneRepositoryFlow = useCallback(() => {
     if (addProjectEnvironmentOptions.length > 1 || defaultAddProjectEnvironmentId === null) {
       pushPaletteView({
         addonIcon: <FolderPlusIcon className={ADDON_ICON_CLASS} />,
@@ -1438,51 +1586,12 @@ function OpenCommandPaletteDialog(props: {
   ]);
 
   useLayoutEffect(() => {
-    if (openIntent?.kind !== "add-project") {
+    if (openIntent?.kind !== "add-project" && openIntent?.kind !== "new-thread-in") {
       return;
     }
     clearOpenIntent();
-    openAddProjectFlow();
-  }, [clearOpenIntent, openAddProjectFlow, openIntent]);
-
-  useLayoutEffect(() => {
-    if (openIntent?.kind !== "new-thread-in" || projectThreadItems.length === 0) {
-      return;
-    }
-    clearOpenIntent();
-    browseNavigation.invalidate();
-    setAddProjectCloneFlow(null);
-    setViewStack([]);
-    setQuery("");
-    const currentPrefix =
-      currentProjectEnvironmentId && currentProjectId
-        ? `new-thread-in:${currentProjectEnvironmentId}:${currentProjectId}`
-        : null;
-    const prioritized = currentPrefix
-      ? [
-          ...projectThreadItems.filter((item) => item.value === currentPrefix),
-          ...projectThreadItems.filter((item) => item.value !== currentPrefix),
-        ]
-      : projectThreadItems;
-    pushPaletteView({
-      addonIcon: <SquarePenIcon className={ADDON_ICON_CLASS} />,
-      groups: [
-        {
-          value: "projects",
-          label: "Projects",
-          items: enumerateCommandPaletteItems(prioritized),
-        },
-      ],
-    });
-  }, [
-    clearOpenIntent,
-    browseNavigation,
-    currentProjectEnvironmentId,
-    currentProjectId,
-    openIntent,
-    projectThreadItems,
-    pushPaletteView,
-  ]);
+    openProjectPicker();
+  }, [clearOpenIntent, openIntent, openProjectPicker]);
 
   const actionItems: Array<CommandPaletteActionItem | CommandPaletteSubmenuItem> = [];
 
@@ -1515,13 +1624,15 @@ function OpenCommandPaletteDialog(props: {
     }
 
     actionItems.push({
-      kind: "submenu",
+      kind: "action",
       value: "action:new-thread-in",
       searchTerms: ["new thread", "project", "pick", "choose", "select"],
       title: "New thread in...",
       icon: <SquarePenIcon className={ITEM_ICON_CLASS} />,
-      addonIcon: <SquarePenIcon className={ADDON_ICON_CLASS} />,
-      groups: [{ value: "projects", label: "Projects", items: projectThreadItems }],
+      keepOpen: true,
+      run: async () => {
+        openProjectPicker();
+      },
     });
   }
 
@@ -1554,11 +1665,19 @@ function OpenCommandPaletteDialog(props: {
   actionItems.push({
     kind: "action",
     value: "action:add-project",
+    searchTerms: ["add project", "folder", "directory", "browse", "new project", "open folder"],
+    title: "Add project",
+    icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
+    keepOpen: true,
+    run: async () => {
+      openProjectPicker();
+    },
+  });
+
+  actionItems.push({
+    kind: "action",
+    value: "action:clone-repository",
     searchTerms: [
-      "add project",
-      "folder",
-      "directory",
-      "browse",
       "clone",
       "remote",
       "repository",
@@ -1572,12 +1691,12 @@ function OpenCommandPaletteDialog(props: {
       "url",
       "environment",
     ],
-    title: "Add project",
+    title: "Clone repository",
     disabled: defaultAddProjectEnvironmentId === null,
-    icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
+    icon: <LinkIcon className={ITEM_ICON_CLASS} />,
     keepOpen: true,
     run: async () => {
-      openAddProjectFlow();
+      openCloneRepositoryFlow();
     },
   });
 
@@ -1591,7 +1710,7 @@ function OpenCommandPaletteDialog(props: {
       icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
       keepOpen: true,
       run: async () => {
-        await startAddProjectBrowse(wslAddProjectEnvironmentOption.environmentId);
+        await startBrowseForEnvironment(wslAddProjectEnvironmentOption.environmentId);
       },
     });
   }
@@ -1620,6 +1739,17 @@ function OpenCommandPaletteDialog(props: {
     icon: <SettingsIcon className={ITEM_ICON_CLASS} />,
     run: async () => {
       await navigate({ to: "/settings" });
+    },
+  });
+
+  actionItems.push({
+    kind: "action",
+    value: "action:tasks",
+    searchTerms: ["tasks", "backlog", "goals", "todo", "project"],
+    title: "Open tasks",
+    icon: <ListTodoIcon className={ITEM_ICON_CLASS} />,
+    run: async () => {
+      await navigate({ to: "/tasks" });
     },
   });
 
@@ -1663,13 +1793,19 @@ function OpenCommandPaletteDialog(props: {
         )
       : (currentView?.groups ?? rootGroups);
 
-  const filteredGroups = filterCommandPaletteGroups({
-    activeGroups,
-    query: deferredQuery,
-    isInSubmenu: currentView !== null,
-    projectSearchItems: projectSearchItems,
-    threadSearchItems: allThreadItems,
-  });
+  const filteredGroups = isProjectPicker
+    ? buildProjectPickerGroups({
+        browseItem: projectPickerBrowseItem,
+        projectItems: rankedProjectThreadItems,
+        query: deferredQuery,
+      })
+    : filterCommandPaletteGroups({
+        activeGroups,
+        query: deferredQuery,
+        isInSubmenu: currentView !== null,
+        projectSearchItems: projectSearchItems,
+        threadSearchItems: allThreadItems,
+      });
 
   const handleAddProjectForEnvironment = useCallback(
     async (input: {
@@ -2075,7 +2211,7 @@ function OpenCommandPaletteDialog(props: {
 
   const inputPlaceholder =
     remoteProjectInputPlaceholder(addProjectCloneFlow) ??
-    getCommandPaletteInputPlaceholder(paletteMode);
+    (isProjectPicker ? "Search projects..." : getCommandPaletteInputPlaceholder(paletteMode));
   const isSubmenu = paletteMode === "submenu" || paletteMode === "submenu-browse";
   const hasHighlightedBrowseItem = highlightedItemValue?.startsWith("browse:") ?? false;
   const canSubmitBrowsePath =
@@ -2110,7 +2246,6 @@ function OpenCommandPaletteDialog(props: {
     query.trim().length > 0 &&
     canCreateProjectInEnvironment(browseEnvironment?.connection.phase) &&
     !isRemoteProjectPending;
-  const fileManagerName = getLocalFileManagerName(navigator.platform);
   const canOpenProjectFromFileManager =
     isBrowsing &&
     browseEnvironmentId !== null &&
@@ -2220,115 +2355,148 @@ function OpenCommandPaletteDialog(props: {
     });
   }
 
-  const handleOpenProjectFromFileManager = useCallback(async () => {
-    if (!canOpenProjectFromFileManager || isPickingProjectFolder) {
-      return;
-    }
-    const api = readLocalApi();
-    if (!api) {
-      return;
-    }
-
-    setIsPickingProjectFolder(true);
-    let pickedPath: string | null = null;
-    let desktopWslState: DesktopWslState | null = null;
-    try {
-      desktopWslState =
-        browseEnvironmentId === primaryEnvironmentId && browseEnvironmentPlatform === "Linux"
-          ? ((await window.desktopBridge?.getWslState().catch(() => null)) ?? null)
-          : null;
-      // Route the picker to the browsed env's backend filesystem. The desktop
-      // only resolves a "wsl:*" pool instance id, so for a desktop-local env we
-      // pass the bootstrap-mapped instance id (not the catalog environmentId).
-      // A WSL-only primary has no secondary bootstrap, so resolve its instance
-      // id from desktop settings. Windows and combo-mode primaries still omit
-      // the target to preserve the native primary picker. The desktop converts
-      // a WSL UNC selection back to a Linux path before returning.
-      const pickerTargetEnvironmentId = resolveProjectPickerTarget({
-        browseEnvironmentId,
-        primaryEnvironmentId,
-        desktopInstanceId: browseDesktopInstanceId,
-        wslConfiguration: desktopWslState,
-      });
-      const pickerOptions = {
-        ...(fileManagerInitialPath ? { initialPath: fileManagerInitialPath } : {}),
-        ...(pickerTargetEnvironmentId ? { targetEnvironmentId: pickerTargetEnvironmentId } : {}),
-      };
-      pickedPath = await api.dialogs.pickFolder(
-        Object.keys(pickerOptions).length > 0 ? pickerOptions : undefined,
-      );
-    } catch {
-      // Ignore picker failures and leave the palette open.
-      setIsPickingProjectFolder(false);
-      return;
-    }
-    setIsPickingProjectFolder(false);
-    if (!pickedPath) {
-      return;
-    }
-    if (parseWslUncPath(pickedPath)) {
-      desktopWslState ??= (await window.desktopBridge?.getWslState().catch(() => null)) ?? null;
-      let primaryRunningDistro: string | null = null;
-      try {
-        primaryRunningDistro =
-          window.desktopBridge
-            ?.getLocalEnvironmentBootstraps()
-            .find((bootstrap) => bootstrap.id === PRIMARY_LOCAL_ENVIRONMENT_ID)?.runningDistro ??
-          null;
-      } catch {
-        // Keep UNC routing strict when the live primary identity cannot be read.
+  const pickProjectFolderForEnvironment = useCallback(
+    async (environmentId: EnvironmentId, initialPath?: string) => {
+      if (isPickingProjectFolder) {
+        return;
       }
-      const selection = resolveWslProjectSelection(
-        pickedPath,
-        applyWslEnvironmentConfiguration(
-          environments.flatMap((environment) => {
-            const backendId = desktopLocalBackendId(environment.entry.target);
-            if (!backendId) {
-              return [];
-            }
+      const api = readLocalApi();
+      if (!api) {
+        return;
+      }
 
-            const bootstrap = desktopLocalBootstraps.find(
-              (candidate) => candidate.httpBaseUrl === environment.displayUrl,
-            );
-            const runningDistro = bootstrap?.runningDistro ?? null;
-            return [{ environmentId: environment.environmentId, backendId, runningDistro }];
-          }),
-          primaryEnvironmentId,
-          desktopWslState ?? null,
-          primaryRunningDistro,
-        ),
+      const environment =
+        environments.find((candidate) => candidate.environmentId === environmentId) ?? null;
+      const environmentPlatform = getEnvironmentBrowsePlatform(
+        environment?.serverConfig?.environment.platform.os,
       );
-      if (!selection) {
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: "Could not add WSL project",
-            description: "Start the matching WSL backend, then choose the folder again.",
-          }),
+      const environmentIsDesktopLocal =
+        environment !== null && isDesktopLocalConnectionTarget(environment.entry.target);
+      const environmentDesktopInstanceId =
+        environmentIsDesktopLocal && environment.displayUrl !== null
+          ? (desktopLocalBootstraps.find(
+              (bootstrap) => bootstrap.httpBaseUrl === environment.displayUrl,
+            )?.id ?? null)
+          : null;
+
+      setIsPickingProjectFolder(true);
+      let pickedPath: string | null = null;
+      let desktopWslState: DesktopWslState | null = null;
+      try {
+        desktopWslState =
+          environmentId === primaryEnvironmentId && environmentPlatform === "Linux"
+            ? ((await window.desktopBridge?.getWslState().catch(() => null)) ?? null)
+            : null;
+        // Route the picker to the browsed env's backend filesystem. The desktop
+        // only resolves a "wsl:*" pool instance id, so for a desktop-local env we
+        // pass the bootstrap-mapped instance id (not the catalog environmentId).
+        // A WSL-only primary has no secondary bootstrap, so resolve its instance
+        // id from desktop settings. Windows and combo-mode primaries still omit
+        // the target to preserve the native primary picker. The desktop converts
+        // a WSL UNC selection back to a Linux path before returning.
+        const pickerTargetEnvironmentId = resolveProjectPickerTarget({
+          browseEnvironmentId: environmentId,
+          primaryEnvironmentId,
+          desktopInstanceId: environmentDesktopInstanceId,
+          wslConfiguration: desktopWslState,
+        });
+        const pickerOptions = {
+          ...(initialPath ? { initialPath } : {}),
+          ...(pickerTargetEnvironmentId ? { targetEnvironmentId: pickerTargetEnvironmentId } : {}),
+        };
+        pickedPath = await api.dialogs.pickFolder(
+          Object.keys(pickerOptions).length > 0 ? pickerOptions : undefined,
         );
+      } catch {
+        // Ignore picker failures and leave the palette open.
+        setIsPickingProjectFolder(false);
+        return;
+      }
+      setIsPickingProjectFolder(false);
+      if (!pickedPath) {
+        return;
+      }
+      if (parseWslUncPath(pickedPath)) {
+        desktopWslState ??= (await window.desktopBridge?.getWslState().catch(() => null)) ?? null;
+        let primaryRunningDistro: string | null = null;
+        try {
+          primaryRunningDistro =
+            window.desktopBridge
+              ?.getLocalEnvironmentBootstraps()
+              .find((bootstrap) => bootstrap.id === PRIMARY_LOCAL_ENVIRONMENT_ID)?.runningDistro ??
+            null;
+        } catch {
+          // Keep UNC routing strict when the live primary identity cannot be read.
+        }
+        const selection = resolveWslProjectSelection(
+          pickedPath,
+          applyWslEnvironmentConfiguration(
+            environments.flatMap((candidate) => {
+              const backendId = desktopLocalBackendId(candidate.entry.target);
+              if (!backendId) {
+                return [];
+              }
+
+              const bootstrap = desktopLocalBootstraps.find(
+                (entry) => entry.httpBaseUrl === candidate.displayUrl,
+              );
+              const runningDistro = bootstrap?.runningDistro ?? null;
+              return [{ environmentId: candidate.environmentId, backendId, runningDistro }];
+            }),
+            primaryEnvironmentId,
+            desktopWslState ?? null,
+            primaryRunningDistro,
+          ),
+        );
+        if (!selection) {
+          toastManager.add(
+            stackedThreadToast({
+              type: "error",
+              title: "Could not add WSL project",
+              description: "Start the matching WSL backend, then choose the folder again.",
+            }),
+          );
+          return;
+        }
+        await handleAddProjectForEnvironment({
+          environmentId: selection.environmentId,
+          rawCwd: selection.linuxPath,
+          platform: "Linux",
+          currentProjectCwd: null,
+        });
         return;
       }
       await handleAddProjectForEnvironment({
-        environmentId: selection.environmentId,
-        rawCwd: selection.linuxPath,
-        platform: "Linux",
-        currentProjectCwd: null,
+        environmentId,
+        rawCwd: pickedPath,
+        platform: environmentPlatform,
+        currentProjectCwd:
+          environmentId && currentProjectEnvironmentId === environmentId ? currentProjectCwd : null,
       });
+    },
+    [
+      currentProjectCwd,
+      currentProjectEnvironmentId,
+      desktopLocalBootstraps,
+      environments,
+      handleAddProjectForEnvironment,
+      isPickingProjectFolder,
+      primaryEnvironmentId,
+    ],
+  );
+  pickProjectFolderForEnvironmentRef.current = (environmentId) =>
+    pickProjectFolderForEnvironment(environmentId);
+
+  const handleOpenProjectFromFileManager = useCallback(async () => {
+    if (!canOpenProjectFromFileManager || browseEnvironmentId === null) {
       return;
     }
-    await handleAddProject(pickedPath);
+    await pickProjectFolderForEnvironment(browseEnvironmentId, fileManagerInitialPath);
   }, [
-    browseDesktopInstanceId,
     browseEnvironmentId,
-    browseEnvironmentPlatform,
     canOpenProjectFromFileManager,
-    desktopLocalBootstraps,
-    environments,
     fileManagerInitialPath,
-    handleAddProject,
-    handleAddProjectForEnvironment,
-    isPickingProjectFolder,
-    primaryEnvironmentId,
+    pickProjectFolderForEnvironment,
   ]);
 
   const inputAccessory =
@@ -2406,13 +2574,6 @@ function OpenCommandPaletteDialog(props: {
       </Tooltip>
     ) : null;
 
-  const footerActionLabel =
-    addProjectCloneFlow?.step === "repository"
-      ? (remoteProjectButtonLabel ?? "Continue")
-      : !canSubmitBrowsePath || hasHighlightedBrowseItem
-        ? "Select"
-        : undefined;
-
   const footerTrailing = canOpenProjectFromFileManager ? (
     <CommandFooterAction
       disabled={isPickingProjectFolder}
@@ -2429,7 +2590,6 @@ function OpenCommandPaletteDialog(props: {
       key={`${viewStack.length}-${browseGeneration}-${isBrowsing}-${addProjectCloneFlow?.step ?? "none"}`}
       aria-label="Command palette"
       autoHighlight={isBrowsing || isRemoteProjectCloneFlow ? false : "always"}
-      footerActionLabel={footerActionLabel}
       footerTrailing={footerTrailing}
       inputAccessory={inputAccessory}
       inputProps={{
@@ -2472,7 +2632,6 @@ function OpenCommandPaletteDialog(props: {
       }}
       onValueChange={handleQueryChange}
       panelClassName="max-h-[min(28rem,70vh)]"
-      showBackHint={isSubmenu}
       value={query}
     >
       {remoteProjectContext ? (
@@ -2510,9 +2669,15 @@ function OpenCommandPaletteDialog(props: {
                 ? {
                     emptyStateMessage: "Press Enter to create this folder and add it as a project.",
                   }
-                : threadSearch.isPending
-                  ? { emptyStateMessage: "Searching thread messages…" }
-                  : {})}
+                : isProjectPicker
+                  ? {
+                      emptyStateMessage: deferredQuery.trim()
+                        ? "No matching projects."
+                        : "No recent projects. Browse to add a folder.",
+                    }
+                  : threadSearch.isPending
+                    ? { emptyStateMessage: "Searching thread messages…" }
+                    : {})}
       />
     </CommandPaletteContent>
   );

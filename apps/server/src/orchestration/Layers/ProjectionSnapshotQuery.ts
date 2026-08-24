@@ -213,6 +213,17 @@ function escapeLikePattern(value: string): string {
   return value.replaceAll("!", "!!").replaceAll("%", "!%").replaceAll("_", "!_");
 }
 
+/** Spaces in the query match any whitespace in stored messages, so a paste
+ *  from the rendered transcript still hits the markdown that was saved. */
+function likePatternFromQuery(value: string): string {
+  const parts = value
+    .trim()
+    .split(/\s+/)
+    .filter((part) => part.length > 0)
+    .map(escapeLikePattern);
+  return `%${parts.join("%")}%`;
+}
+
 function foldAsciiCase(value: string): string {
   return value.replace(/[A-Z]/g, (character) => character.toLowerCase());
 }
@@ -810,8 +821,8 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           INNER JOIN projection_projects AS projects
             ON projects.project_id = threads.project_id
           WHERE threads.deleted_at IS NULL
-            AND threads.archived_at IS NULL
             AND projects.deleted_at IS NULL
+            -- Archived sessions stay searchable so the overlay can find them.
             AND messages.is_streaming = 0
             AND (
               messages.role = 'user'
@@ -2258,9 +2269,8 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
   const searchThreads: ProjectionSnapshotQueryShape["searchThreads"] = Effect.fn(
     "ProjectionSnapshotQuery.searchThreads",
   )(function* (input) {
-    const escapedQuery = escapeLikePattern(input.query);
     const rows = yield* searchActiveThreadRows({
-      pattern: `%${escapedQuery}%`,
+      pattern: likePatternFromQuery(input.query),
       limit: input.limit ?? 50,
     }).pipe(
       Effect.mapError(

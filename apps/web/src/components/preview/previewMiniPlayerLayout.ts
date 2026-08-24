@@ -1,8 +1,8 @@
 import type { PreviewMiniPlayerPosition, PreviewMiniPlayerSize } from "~/previewMiniPlayerStore";
 
 export const PREVIEW_MINI_PLAYER_EDGE_GAP = 12;
-export const PREVIEW_MINI_PLAYER_DEFAULT_SIZE = { width: 320, height: 200 } as const;
-export const PREVIEW_MINI_PLAYER_MIN_SIZE = { width: 240, height: 150 } as const;
+export const PREVIEW_MINI_PLAYER_DEFAULT_SIZE = { width: 200, height: 125 } as const;
+export const PREVIEW_MINI_PLAYER_MIN_SIZE = { width: 160, height: 100 } as const;
 
 export function clampPreviewMiniPlayerSize(
   size: PreviewMiniPlayerSize,

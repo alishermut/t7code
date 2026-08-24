@@ -1,6 +1,8 @@
 import type { ContextMenuItem } from "@t3tools/contracts";
 import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled";
 
+import { GENERAL_SPACE_ID } from "../threadSpaces";
+
 /**
  * Ids for the per-thread action menu. Snooze presets are dispatched as
  * `snooze:<presetId>` so the union stays closed while the preset list
@@ -23,7 +25,10 @@ export type ThreadActionMenuId =
   | "copy-branch"
   | "copy-thread-id"
   | "archive"
-  | "delete";
+  | "delete"
+  | "move-to-space"
+  | "new-space"
+  | `move-to-space:${string}`;
 
 export interface ThreadActionMenuState {
   readonly branch: string | null;
@@ -41,6 +46,8 @@ export interface ThreadActionMenuState {
     readonly titleRegeneration: boolean;
   };
   readonly snoozePresets: ReadonlyArray<SnoozePreset>;
+  readonly spaces?: ReadonlyArray<{ readonly id: string; readonly name: string }>;
+  readonly currentSpaceId?: string;
 }
 
 /**
@@ -74,8 +81,8 @@ export function buildThreadActionMenuItems(
     ...(state.supports.settlement
       ? [
           state.isSettled
-            ? { id: "unsettle" as const, label: "Un-settle thread", icon: "circle-check" }
-            : { id: "settle" as const, label: "Settle thread", icon: "circle-check" },
+            ? { id: "unsettle" as const, label: "Reopen", icon: "circle-check" }
+            : { id: "settle" as const, label: "Done", icon: "circle-check" },
         ]
       : []),
     ...(state.supports.snooze
@@ -92,6 +99,20 @@ export function buildThreadActionMenuItems(
                   label: `${preset.label} (${preset.whenLabel})`,
                 })),
               },
+        ]
+      : []),
+    ...(state.spaces && state.spaces.some((space) => space.id !== GENERAL_SPACE_ID)
+      ? [
+          {
+            id: "move-to-space" as const,
+            label: "Move to space",
+            icon: "layers",
+            separatorBefore: true,
+            children: state.spaces.map((space) => ({
+              id: `move-to-space:${space.id}` as const,
+              label: space.id === state.currentSpaceId ? `${space.name} (current)` : space.name,
+            })),
+          },
         ]
       : []),
     { id: "rename", label: "Rename thread", icon: "pencil", separatorBefore: true },

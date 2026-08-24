@@ -488,6 +488,23 @@ describe("PreviewView navigation", () => {
     expect(mocks.closeMiniPlayer).toHaveBeenCalledWith(props.threadRef);
   });
 
+  it("puts device dimensions in the workspace header in embedded mode", () => {
+    const markup = renderToStaticMarkup(
+      <PreviewView threadRef={TEST_THREAD_REF} tabId="tab-1" visible mode="embedded" />,
+    );
+
+    expect(markup).toContain("data-browser-workspace-header");
+    expect(markup).toContain('data-browser-device-toolbar-variant="workspace"');
+  });
+
+  it("keeps device dimensions out of the right-panel preview chrome", () => {
+    const markup = renderToStaticMarkup(
+      <PreviewView threadRef={TEST_THREAD_REF} tabId="tab-1" visible />,
+    );
+
+    expect(markup).not.toContain("data-browser-workspace-header");
+  });
+
   it("keeps the native preview window as a secondary action", async () => {
     const props = {
       threadRef: {

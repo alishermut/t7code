@@ -13,6 +13,9 @@ import { formatRelativeTimeLabel } from "../timestampFormat";
 import { type Project, type SidebarThreadSummary, type Thread } from "../types";
 
 export const RECENT_THREAD_LIMIT = 12;
+export const RECENT_PROJECT_PICKER_LIMIT = 5;
+export const PROJECT_PICKER_BROWSE_GROUP = "project-picker-browse";
+export const PROJECT_PICKER_PROJECTS_GROUP = "project-picker-projects";
 export const ITEM_ICON_CLASS = "size-4 text-icon-muted";
 export const ADDON_ICON_CLASS = "size-4";
 
@@ -455,4 +458,93 @@ export function getCommandPaletteInputPlaceholder(mode: CommandPaletteMode): str
     case "submenu-browse":
       return "Enter path (e.g. ~/projects/my-app)";
   }
+}
+
+export function isProjectPickerView(
+  view: { readonly groups: ReadonlyArray<{ readonly value: string }> } | null,
+): boolean {
+  return (
+    view?.groups.some(
+      (group) =>
+        group.value === PROJECT_PICKER_BROWSE_GROUP ||
+        group.value === PROJECT_PICKER_PROJECTS_GROUP,
+    ) ?? false
+  );
+}
+
+export function latestActivityTimestamp(input: {
+  readonly projectKeys: ReadonlySet<string>;
+  readonly threads: ReadonlyArray<{
+    readonly environmentId: string;
+    readonly projectId: string;
+    readonly updatedAt: string;
+    readonly latestUserMessageAt?: string | null;
+    readonly archivedAt?: string | null;
+  }>;
+}): string | null {
+  let latest: string | null = null;
+  for (const thread of input.threads) {
+    if (thread.archivedAt != null) {
+      continue;
+    }
+    if (!input.projectKeys.has(`${thread.environmentId}:${thread.projectId}`)) {
+      continue;
+    }
+    const timestamp = thread.latestUserMessageAt ?? thread.updatedAt;
+    if (latest === null || timestamp > latest) {
+      latest = timestamp;
+    }
+  }
+  return latest;
+}
+
+export function compareActivityTimestamps(left: string | null, right: string | null): number {
+  if (left === right) {
+    return 0;
+  }
+  if (left === null) {
+    return 1;
+  }
+  if (right === null) {
+    return -1;
+  }
+  return left < right ? 1 : -1;
+}
+
+export function buildProjectPickerGroups(input: {
+  readonly browseItem: CommandPaletteActionItem | null;
+  readonly projectItems: ReadonlyArray<CommandPaletteActionItem>;
+  readonly query: string;
+  readonly idleLimit?: number;
+}): CommandPaletteGroup[] {
+  const normalizedQuery = normalizeSearchText(input.query);
+  const idleLimit = input.idleLimit ?? RECENT_PROJECT_PICKER_LIMIT;
+  const groups: CommandPaletteGroup[] = [];
+  const browseItem = input.browseItem;
+  const showBrowse =
+    browseItem !== null &&
+    (normalizedQuery.length === 0 ||
+      normalizeSearchText(browseItem.searchTerms.join(" ")).includes(normalizedQuery));
+  if (showBrowse && browseItem) {
+    groups.push({
+      value: PROJECT_PICKER_BROWSE_GROUP,
+      label: "",
+      items: [browseItem],
+    });
+  }
+
+  const projectItems =
+    normalizedQuery.length === 0
+      ? input.projectItems.slice(0, idleLimit)
+      : input.projectItems.filter((item) =>
+          normalizeSearchText(item.searchTerms.join(" ")).includes(normalizedQuery),
+        );
+  if (projectItems.length > 0) {
+    groups.push({
+      value: PROJECT_PICKER_PROJECTS_GROUP,
+      label: normalizedQuery.length === 0 ? "Recent" : "Projects",
+      items: projectItems,
+    });
+  }
+  return groups;
 }
