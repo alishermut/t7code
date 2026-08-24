@@ -626,6 +626,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         shortcutName: "T7 Code",
         uninstallDisplayName: "T7 Code",
       });
+      assert.equal((win.win as Record<string, unknown>).executableName, "T7Code");
       // Native binaries and helper executables cannot load from inside an
       // asar; everything else stays packed. The Claude SDK platform packages
       // and .bin shims never ship.

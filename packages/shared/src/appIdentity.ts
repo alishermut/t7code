@@ -39,3 +39,4 @@ export function productNameForChannel(channel: "latest" | "nightly"): string {
 
 export const LINUX_URL_HANDLER_DESKTOP_ENTRY_NAME = `${APP_SLUG}-url-handler.desktop`;
 export const LINUX_EXECUTABLE_NAME = APP_SLUG;
+export const WINDOWS_EXECUTABLE_NAME = "T7Code";

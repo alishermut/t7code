@@ -16,9 +16,11 @@ import {
 import {
   APP_BASE_NAME,
   APP_ID,
+  APP_SLUG,
   ARTIFACT_NAME_TEMPLATE,
   AUTO_UPDATES_ENABLED,
   LINUX_EXECUTABLE_NAME,
+  WINDOWS_EXECUTABLE_NAME,
   protocolScheme,
 } from "@t3tools/shared/appIdentity";
 import { fromYaml } from "@t3tools/shared/schemaYaml";
@@ -2264,6 +2266,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
     const winConfig: Record<string, unknown> = {
       target: [target],
       icon: "icon.ico",
+      executableName: WINDOWS_EXECUTABLE_NAME,
       // Resource editing applies the product metadata and icon independently
       // of code signing. Disabling it for local unsigned builds leaves the
       // packaged executable with Electron's stock icon.
@@ -3187,7 +3190,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
       ? path.join(stageAppDir, WINDOWS_SERVER_RESOURCE_SOURCE_DIR, WINDOWS_SERVER_ASAR_RESOURCE)
       : undefined;
   const stagePackageJson: StagePackageJson = {
-    name: "t3code",
+    name: APP_SLUG,
     version: appVersion,
     buildVersion: appVersion,
     t3codeCommitHash: commitHash,
@@ -3366,7 +3369,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   if (options.platform === "win") {
     yield* validateWindowsPackagedPayload({
       stageDistDir,
-      appExecutableName: `${resolveDesktopProductName(appVersion)}.exe`,
+      appExecutableName: `${WINDOWS_EXECUTABLE_NAME}.exe`,
       targetArch: options.arch,
       expectWslRuntime: bundlesWslRuntime({
         arch: options.arch,
