@@ -215,6 +215,10 @@
       "types": "./src/devHome.ts",
       "import": "./src/devHome.ts"
     },
+    "./appIdentity": {
+      "types": "./src/appIdentity.ts",
+      "import": "./src/appIdentity.ts"
+    },
     "./devProxy": {
       "types": "./src/devProxy.ts",
       "import": "./src/devProxy.ts"

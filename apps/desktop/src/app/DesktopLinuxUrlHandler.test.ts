@@ -23,7 +23,7 @@ const makeEnvironment = (overrides: Record<string, unknown> = {}) =>
     isPackaged: true,
     isDevelopment: false,
     displayName: "T3 Code (Alpha)",
-    linuxWmClass: "t3code",
+    linuxWmClass: "t7code",
     linuxApplicationsDir: "/home/alice/.local/share/applications",
     appImagePath: Option.some("/home/alice/Applications/T3-Code.AppImage"),
     path: { join: (...parts: ReadonlyArray<string>) => parts.join("/") },
@@ -161,17 +161,17 @@ describe("DesktopLinuxUrlHandler", () => {
       assert.equal(recorded.files.length, 1);
       assert.equal(
         recorded.files[0]?.path,
-        "/home/alice/.local/share/applications/t3code-url-handler.desktop",
+        "/home/alice/.local/share/applications/t7code-url-handler.desktop",
       );
       assert.include(
         recorded.files[0]?.content,
         'Exec="/home/alice/Applications/T3-Code.AppImage" %U',
       );
-      assert.include(recorded.files[0]?.content, "MimeType=x-scheme-handler/t3code;");
+      assert.include(recorded.files[0]?.content, "MimeType=x-scheme-handler/t7code;");
       assert.deepEqual(recorded.commands, [
         {
           command: "xdg-mime",
-          args: ["default", "t3code-url-handler.desktop", "x-scheme-handler/t3code"],
+          args: ["default", "t7code-url-handler.desktop", "x-scheme-handler/t7code"],
         },
       ]);
     });

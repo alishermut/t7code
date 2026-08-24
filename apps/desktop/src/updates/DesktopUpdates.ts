@@ -6,6 +6,7 @@ import {
   type DesktopUpdateCheckResult,
   type DesktopUpdateState,
 } from "@t3tools/contracts";
+import { AUTO_UPDATES_ENABLED } from "@t3tools/shared/appIdentity";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
@@ -227,6 +228,9 @@ function getAutoUpdateDisabledReason(args: {
   disabledByEnv: boolean;
   hasUpdateFeedConfig: boolean;
 }): string | null {
+  if (!AUTO_UPDATES_ENABLED) {
+    return "Automatic updates are disabled in this T7 Code build.";
+  }
   if (!args.hasUpdateFeedConfig) {
     return "Automatic updates are not available because no update feed is configured.";
   }
