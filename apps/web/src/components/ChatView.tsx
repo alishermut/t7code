@@ -7040,6 +7040,8 @@ function ChatViewContent(props: ChatViewProps) {
                           composerRef={composerRef}
                           composerDraftTarget={composerDraftTarget}
                           environmentId={environmentId}
+                          attachmentUploadsCapabilityKnown={attachmentUploadsCapabilityKnown}
+                          supportsAttachmentUploads={supportsAttachmentUploads}
                           routeKind={routeKind}
                           routeThreadRef={routeThreadRef}
                           draftId={draftId}
