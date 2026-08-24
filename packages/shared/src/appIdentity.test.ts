@@ -8,6 +8,7 @@ import {
   HOME_DIR_NAME,
   LINUX_EXECUTABLE_NAME,
   LINUX_URL_HANDLER_DESKTOP_ENTRY_NAME,
+  WINDOWS_EXECUTABLE_NAME,
   appIdForDevelopment,
   legacyUserDataDirName,
   linuxDesktopEntryName,
@@ -25,6 +26,7 @@ describe("appIdentity", () => {
     expect(HOME_DIR_NAME).toBe(".t7code");
     expect(LINUX_EXECUTABLE_NAME).toBe("t7code");
     expect(LINUX_URL_HANDLER_DESKTOP_ENTRY_NAME).toBe("t7code-url-handler.desktop");
+    expect(WINDOWS_EXECUTABLE_NAME).toBe("T7Code");
     expect(AUTO_UPDATES_ENABLED).toBe(false);
   });
 
