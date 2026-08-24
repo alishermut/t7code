@@ -12,8 +12,11 @@ import {
   reorderProjects,
   resolveProjectExpanded,
   setDefaultAdvertisedEndpointKey,
+  setEditorFileForProject,
   setProjectExpanded,
   setThreadChangedFilesExpanded,
+  setWorkspaceLeftPane,
+  setWorkspaceMode,
   type UiState,
 } from "./uiStateStore";
 
@@ -24,6 +27,13 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
     threadLastVisitedAtById: {},
     threadChangedFilesExpandedById: {},
     defaultAdvertisedEndpointKey: null,
+    spacesByProjectKey: {},
+    threadSpaceByThreadKey: {},
+    spaceExpandedById: {},
+    openThreadTabKeys: [],
+    workspaceMode: "agent",
+    workspaceLeftPane: "chat",
+    editorFileByProjectKey: {},
     ...overrides,
   };
 }
@@ -65,6 +75,42 @@ describe("uiStateStore pure functions", () => {
     );
     expect(resolveProjectExpanded({ [legacyKey]: false }, ["new-logical", legacyKey])).toBe(false);
     expect(resolveProjectExpanded({}, ["new-logical"])).toBe(true);
+  });
+
+  it("switches workspace mode and remembers the open editor file per project", () => {
+    const initialState = makeUiState();
+    const editor = setWorkspaceMode(initialState, "editor");
+    expect(editor.workspaceMode).toBe("editor");
+    expect(setWorkspaceMode(editor, "editor")).toBe(editor);
+
+    const withFile = setEditorFileForProject(editor, "env:project-1", "src/app.ts");
+    expect(withFile.editorFileByProjectKey["env:project-1"]).toBe("src/app.ts");
+    expect(setEditorFileForProject(withFile, "env:project-1", null).editorFileByProjectKey).toEqual(
+      {},
+    );
+  });
+
+  it("keeps the editor/browser left pane until returning to agent mode", () => {
+    const sessions = setWorkspaceLeftPane(setWorkspaceMode(makeUiState(), "editor"), "sessions");
+    expect(sessions.workspaceLeftPane).toBe("sessions");
+    expect(setWorkspaceLeftPane(sessions, "sessions")).toBe(sessions);
+
+    const browser = setWorkspaceMode(sessions, "browser");
+    expect(browser.workspaceMode).toBe("browser");
+    expect(browser.workspaceLeftPane).toBe("sessions");
+
+    const agent = setWorkspaceMode(browser, "agent");
+    expect(agent.workspaceMode).toBe("agent");
+    expect(agent.workspaceLeftPane).toBe("chat");
+  });
+
+  it("parses persisted browser mode and the sessions left pane", () => {
+    const parsed = parsePersistedState({
+      workspaceMode: "browser",
+      workspaceLeftPane: "sessions",
+    });
+    expect(parsed.workspaceMode).toBe("browser");
+    expect(parsed.workspaceLeftPane).toBe("sessions");
   });
 
   it("sets expansion for every stable key belonging to a logical project", () => {
@@ -183,6 +229,13 @@ describe("parsePersistedState", () => {
           "turn-2": true,
         },
       },
+      spacesByProjectKey: {},
+      threadSpaceByThreadKey: {},
+      spaceExpandedById: {},
+      openThreadTabKeys: [],
+      workspaceMode: "agent",
+      workspaceLeftPane: "chat",
+      editorFileByProjectKey: {},
     });
   });
 
@@ -303,6 +356,13 @@ describe("uiStateStore persistence", () => {
           "turn-2": true,
         },
       },
+      spacesByProjectKey: {},
+      threadSpaceByThreadKey: {},
+      spaceExpandedById: {},
+      openThreadTabKeys: [],
+      workspaceMode: "agent",
+      workspaceLeftPane: "chat",
+      editorFileByProjectKey: {},
     });
     expect(parsePersistedState(persisted)).toEqual({
       ...state,

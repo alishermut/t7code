@@ -44,6 +44,7 @@ export function PreviewPanel({
     <PreviewPanelShell mode={mode}>
       <PreviewView
         threadRef={threadRef}
+        mode={mode}
         {...(tabId !== undefined ? { tabId } : {})}
         configuredUrls={configuredUrls}
         visible={visible}

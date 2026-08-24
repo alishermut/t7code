@@ -1993,6 +1993,24 @@ body {
   padding: 0;
 }
 
+/* Sidebar + its portaled space menu: OS interface font (SF on Apple,
+   Segoe UI Variable / Segoe on Windows) rather than the app sans token. */
+[data-slot="sidebar"],
+[data-slot="sidebar-inner"],
+[data-slot="sidebar-container"],
+[data-sidebar-system-font] {
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI Variable Text",
+    "Segoe UI",
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
 html,
 body {
   min-height: calc(100svh + env(safe-area-inset-top));

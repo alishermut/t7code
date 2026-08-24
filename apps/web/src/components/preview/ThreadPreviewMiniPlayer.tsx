@@ -1,7 +1,7 @@
 "use client";
 
 import type { ScopedThreadRef } from "@t3tools/contracts";
-import { PanelRightIcon, PictureInPicture2, XIcon } from "lucide-react";
+import { Maximize2Icon, PictureInPicture2, XIcon } from "lucide-react";
 import { type PointerEvent as ReactPointerEvent, useLayoutEffect, useRef, useState } from "react";
 
 import { BrowserSurfaceSlot } from "~/browser/BrowserSurfaceSlot";
@@ -11,7 +11,7 @@ import { toastManager } from "~/components/ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { useThreadPreviewState } from "~/previewStateStore";
 import { selectThreadPreviewMiniPlayer, usePreviewMiniPlayerStore } from "~/previewMiniPlayerStore";
-import { useRightPanelStore } from "~/rightPanelStore";
+import { useUiStateStore } from "~/uiStateStore";
 
 import { previewBridge } from "./previewBridge";
 import {
@@ -66,9 +66,9 @@ export function ThreadPreviewMiniPlayer({ threadRef, tabId, bottomInset }: Props
     usePreviewMiniPlayerStore.getState().close(threadRef);
   };
 
-  const openInPanel = () => {
+  const openInBrowser = () => {
     usePreviewMiniPlayerStore.getState().close(threadRef);
-    useRightPanelStore.getState().openBrowser(threadRef, tabId);
+    useUiStateStore.getState().setWorkspaceMode("browser");
   };
 
   const toggleNativePictureInPicture = () => {
@@ -261,15 +261,15 @@ export function ThreadPreviewMiniPlayer({ threadRef, tabId, bottomInset }: Props
                 <Button
                   variant="ghost"
                   size="icon-xs"
-                  aria-label="Open preview in right panel"
+                  aria-label="Open preview in browser"
                   onPointerDown={(event) => event.stopPropagation()}
-                  onClick={openInPanel}
+                  onClick={openInBrowser}
                 />
               }
             >
-              <PanelRightIcon />
+              <Maximize2Icon />
             </TooltipTrigger>
-            <TooltipPopup side="top">Open in right panel</TooltipPopup>
+            <TooltipPopup side="top">Open in browser</TooltipPopup>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger
@@ -330,6 +330,12 @@ export function ThreadPreviewMiniPlayer({ threadRef, tabId, bottomInset }: Props
           className="absolute inset-0"
         />
         <div className="pointer-events-none absolute inset-0 z-[31] rounded-xl ring-1 ring-inset ring-border/80" />
+        <button
+          type="button"
+          aria-label="Open preview in browser"
+          className="pointer-events-auto absolute inset-0 z-[32] cursor-pointer rounded-xl bg-transparent"
+          onClick={openInBrowser}
+        />
         {!desktopOverlay?.hasWebContents ? (
           <div className="pointer-events-none absolute inset-0 z-[32] flex items-center justify-center rounded-xl bg-muted text-xs text-muted-foreground">
             Reconnecting preview…

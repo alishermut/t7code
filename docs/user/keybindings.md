@@ -52,12 +52,9 @@ successful pick; its hover glow and badge preview the element and color family t
 `rightPanel.toggleMaximized` maximizes or restores the open right panel. It has no default shortcut,
 so add one in **Settings** → **Keybindings** if you want to use it.
 
-`thread.settle` settles the active thread or restores it when it is already settled. Its default
-shortcut is `mod+shift+s`, and it does not run while the terminal has focus.
-
-`thread.pin` pins the active thread to the pinned section of the sidebar, or unpins it when it is
-already pinned. Its default shortcut is `mod+shift+p`, and it does not run while the terminal has
-focus. See [Organizing threads](./thread-sidebar.md) for how pinned threads are ordered.
+In **Editor** and **Browser**, `Shift+Tab` switches the left pane between chat and the session
+list. Agent mode leaves `Shift+Tab` alone. If legacy Plan mode is on and the composer is focused,
+`Shift+Tab` still toggles Build/Plan instead.
 
 The command palette searches active thread titles, projects, branches, user messages, and final
 agent responses across connected environments. Message matches show one labeled excerpt while

@@ -78,6 +78,7 @@ interface FilePreviewPanelProps {
   revealRequestId: number;
   onOpenFile: (relativePath: string) => void;
   onPendingChange: (relativePath: string, pending: boolean) => void;
+  hideExplorer?: boolean;
 }
 
 const FILE_EXPLORER_STORAGE_KEY = "t3code.fileExplorerOpen";
@@ -768,6 +769,7 @@ export default function FilePreviewPanel({
   revealRequestId,
   onOpenFile,
   onPendingChange,
+  hideExplorer = false,
 }: FilePreviewPanelProps) {
   const { resolvedTheme } = useTheme();
   const wordWrap = useClientSettings((settings) => settings.wordWrap);
@@ -961,25 +963,27 @@ export default function FilePreviewPanel({
               <TooltipPopup>Open file in preview browser</TooltipPopup>
             </Tooltip>
           ) : null}
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Toggle
-                  className="shrink-0"
-                  pressed={explorerOpen}
-                  onPressedChange={toggleExplorer}
-                  aria-label={explorerOpen ? "Hide file explorer" : "Show file explorer"}
-                  variant="ghost"
-                  size="sm"
-                >
-                  <FolderTree className="size-3.5" />
-                </Toggle>
-              }
-            />
-            <TooltipPopup>
-              {explorerOpen ? "Hide file explorer" : "Show file explorer"}
-            </TooltipPopup>
-          </Tooltip>
+          {hideExplorer ? null : (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Toggle
+                    className="shrink-0"
+                    pressed={explorerOpen}
+                    onPressedChange={toggleExplorer}
+                    aria-label={explorerOpen ? "Hide file explorer" : "Show file explorer"}
+                    variant="ghost"
+                    size="sm"
+                  >
+                    <FolderTree className="size-3.5" />
+                  </Toggle>
+                }
+              />
+              <TooltipPopup>
+                {explorerOpen ? "Hide file explorer" : "Show file explorer"}
+              </TooltipPopup>
+            </Tooltip>
+          )}
         </div>
       ) : null}
       {relativePath && file.data?.truncated ? (
@@ -988,6 +992,11 @@ export default function FilePreviewPanel({
         </div>
       ) : null}
       <div className="flex min-h-0 flex-1 overflow-hidden">
+        {hideExplorer && !relativePath ? (
+          <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground">
+            Select a file to edit
+          </div>
+        ) : null}
         <div
           className={cn(
             "min-w-0 flex-1 flex-col overflow-hidden",
@@ -1063,7 +1072,7 @@ export default function FilePreviewPanel({
             )
           ) : null}
         </div>
-        {explorerOpen || relativePath === null ? (
+        {hideExplorer ? null : explorerOpen || relativePath === null ? (
           <aside
             className={cn(
               "flex min-h-0 shrink-0 bg-background",

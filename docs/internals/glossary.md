@@ -11,7 +11,7 @@ This is a living glossary for T3 Code. It explains what common terms mean in thi
 - [Orchestration](#orchestration)
 - [Provider runtime](#provider-runtime)
 - [Checkpointing](#checkpointing)
-- [Appearance](#appearance)
+- [Project tasks](#project-tasks)
 
 ## Concepts
 
@@ -145,20 +145,15 @@ The patch difference between two checkpoints. Query logic lives in [CheckpointDi
 
 The file patch and changed-file summary for one turn. It is usually computed in [CheckpointDiffQuery.ts][20], represented in [the contracts][1], and recorded into thread state by [projector.ts][4].
 
-### Appearance
+### Project tasks
 
-#### Environment theme
+The environment-local **project backlog**, distinct from turn-local provider todos.
 
-A theme an environment's machine publishes for clients to follow, one file per theme under `themes/` in that environment's state directory; the filename is the theme id. [environmentTheme.ts][25] watches the directory and streams the set over `subscribeServerConfig`; clients render each as a library card, generating a full palette when the file carries seed colors and using the palette directly when it is a standard exported theme file. A desktop that retints its apps when the system theme changes rewrites its file, so T3 Code follows along without a restart. See [environment-theme.md][26].
+Turn-local todos (`TodoWrite`, Cursor `update_todos`, Codex `update_plan`) flatten to `turn.plan.updated` and live in [ThreadPlanProgress.ts][25] for the current turn only. Project tasks persist in userdata `project-tasks.json`, are exposed on the `t3-code` MCP server as `tasks_*`, and are edited from the Tasks page. See [projectTasks.ts][26] and [ProjectTaskStore.ts][27].
 
-#### Default theme
+#### Project task
 
-The environment's theme, held in its `settings.json` as `defaultTheme` (with `defaultThemeSetAt`
-as the set-generation) and set with `t3 theme set <id>`. Web and desktop clients apply each set
-once — live when connected, on the next connect otherwise — so setting it switches them, while a
-theme a user picks in Settings afterwards sticks until the next set; mobile keeps its own
-appearance settings. Naming a published [environment theme](#environment-theme) is how a desktop
-ships T3 Code already matching it.
+A durable goal or child task scoped to a project. Statuses are `open`, `doing`, `blocked`, and `done`. A task may nest under a parent and may be claimed by a thread.
 
 ## Practical Shortcuts
 
@@ -199,5 +194,6 @@ ships T3 Code already matching it.
 [22]: ../../apps/server/src/checkpointing/Utils.ts
 [23]: ../../apps/server/src/checkpointing/Diffs.ts
 [24]: ./overview.md
-[25]: ../../apps/server/src/environmentTheme.ts
-[26]: ../user/environment-theme.md
+[25]: ../../apps/server/src/orchestration/ThreadPlanProgress.ts
+[26]: ../../packages/contracts/src/projectTasks.ts
+[27]: ../../apps/server/src/projectTasks/ProjectTaskStore.ts

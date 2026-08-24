@@ -28,9 +28,15 @@ import {
   readEnvironmentSupportsSnooze,
   readEnvironmentSupportsTitleRegeneration,
   readThreadShell,
+  useProjects,
 } from "../state/entities";
 import { readLocalApi } from "../localApi";
 import { useUiStateStore } from "../uiStateStore";
+import { listSpacesForProject, resolveThreadSpaceId } from "../threadSpaces";
+import {
+  deriveLogicalProjectKeyFromSettings,
+  selectProjectGroupingSettings,
+} from "../logicalProject";
 import { useCopyToClipboard } from "./useCopyToClipboard";
 import { useNewThreadHandler } from "./useHandleNewThread";
 import { useClientSettings } from "./useSettings";
@@ -85,6 +91,9 @@ export function useThreadActionMenu(input: {
   const confirmThreadDelete = useClientSettings((s) => s.confirmThreadDelete);
   const confirmThreadArchive = useClientSettings((s) => s.confirmThreadArchive);
   const timestampFormat = useClientSettings((s) => s.timestampFormat);
+  const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
+  const projects = useProjects();
+  const assignThreadSpace = useUiStateStore((s) => s.assignThreadSpace);
   const { copyToClipboard: copyPathToClipboard } = useCopyToClipboard<{ path: string }>({
     onCopy: ({ path }) => {
       toastManager.add({ type: "success", title: "Path copied", description: path });
@@ -124,6 +133,20 @@ export function useThreadActionMenu(input: {
         };
         const isRegeneratingTitle = thread.titleRegeneration != null;
         const snoozePresets = resolveSnoozePresets(now, timestampFormat);
+        const project = projects.find(
+          (candidate) =>
+            candidate.id === thread.projectId &&
+            candidate.environmentId === threadRef.environmentId,
+        );
+        const projectKey = project
+          ? deriveLogicalProjectKeyFromSettings(project, projectGroupingSettings)
+          : `${threadRef.environmentId}:${thread.projectId}`;
+        const spaceState = useUiStateStore.getState();
+        const spaces = listSpacesForProject(spaceState.spacesByProjectKey[projectKey]);
+        const currentSpaceId = resolveThreadSpaceId(
+          scopedThreadKey(threadRef),
+          spaceState.threadSpaceByThreadKey,
+        );
         const items = buildThreadActionMenuItems({
           branch: thread.branch ?? null,
           isPinned: thread.pinnedAt != null,
@@ -144,10 +167,16 @@ export function useThreadActionMenu(input: {
           isRunning: thread.session?.status === "running" && thread.session.activeTurnId != null,
           supports,
           snoozePresets,
+          spaces,
+          currentSpaceId,
         });
         const clicked = await settlePromise(() => api.contextMenu.show(items, position));
         if (clicked._tag === "Failure" || clicked.value === null) return;
         const action: ThreadActionMenuId = clicked.value;
+        if (action.startsWith("move-to-space:")) {
+          assignThreadSpace(scopedThreadKey(threadRef), action.slice("move-to-space:".length));
+          return;
+        }
         if (action.startsWith("snooze:")) {
           const preset = snoozePresets.find((candidate) => `snooze:${candidate.id}` === action);
           if (!preset) return;
@@ -326,6 +355,9 @@ export function useThreadActionMenu(input: {
       onStartRename,
       pinThread,
       projectCwd,
+      projectGroupingSettings,
+      projects,
+      assignThreadSpace,
       settleThread,
       snoozeThread,
       threadRef,

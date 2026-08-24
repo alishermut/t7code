@@ -205,6 +205,14 @@ import {
   SourceControlRepositoryLookupInput,
 } from "./sourceControl.ts";
 import { VcsError } from "./vcs.ts";
+import {
+  ProjectTask,
+  ProjectTaskCreateInput,
+  ProjectTaskError,
+  ProjectTaskListInput,
+  ProjectTaskListResult,
+  ProjectTaskUpdateInput,
+} from "./projectTasks.ts";
 
 export const WS_METHODS = {
   // Project registry methods
@@ -291,6 +299,10 @@ export const WS_METHODS = {
   serverReportHostPowerState: "server.reportHostPowerState",
   serverGetBackgroundPolicy: "server.getBackgroundPolicy",
   serverGetUsageSummary: "server.getUsageSummary",
+
+  projectTasksList: "projectTasks.list",
+  projectTasksCreate: "projectTasks.create",
+  projectTasksUpdate: "projectTasks.update",
 
   // Cloud environment methods
   cloudGetRelayClientStatus: "cloud.getRelayClientStatus",
@@ -451,6 +463,24 @@ export const WsServerGetUsageSummaryRpc = Rpc.make(WS_METHODS.serverGetUsageSumm
   payload: UsageSummaryInput,
   success: UsageSummary,
   error: Schema.Union([EnvironmentAuthorizationError, UsageReadError]),
+});
+
+export const WsProjectTasksListRpc = Rpc.make(WS_METHODS.projectTasksList, {
+  payload: ProjectTaskListInput,
+  success: ProjectTaskListResult,
+  error: Schema.Union([ProjectTaskError, EnvironmentAuthorizationError]),
+});
+
+export const WsProjectTasksCreateRpc = Rpc.make(WS_METHODS.projectTasksCreate, {
+  payload: ProjectTaskCreateInput,
+  success: ProjectTask,
+  error: Schema.Union([ProjectTaskError, EnvironmentAuthorizationError]),
+});
+
+export const WsProjectTasksUpdateRpc = Rpc.make(WS_METHODS.projectTasksUpdate, {
+  payload: ProjectTaskUpdateInput,
+  success: ProjectTask,
+  error: Schema.Union([ProjectTaskError, EnvironmentAuthorizationError]),
 });
 
 export const WsServerSignalProcessRpc = Rpc.make(WS_METHODS.serverSignalProcess, {
@@ -1044,6 +1074,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerGetResourceTelemetryHistoryRpc,
   WsServerRetryResourceTelemetryRpc,
   WsServerGetUsageSummaryRpc,
+  WsProjectTasksListRpc,
+  WsProjectTasksCreateRpc,
+  WsProjectTasksUpdateRpc,
   WsServerSignalProcessRpc,
   WsServerReportClientActivityRpc,
   WsServerReportHostPowerStateRpc,

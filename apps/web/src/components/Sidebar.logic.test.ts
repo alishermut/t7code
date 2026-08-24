@@ -476,6 +476,11 @@ describe("shouldCreateNewThreadInCurrentProject", () => {
     expect(shouldCreateNewThreadInCurrentProject(false, 1)).toBe(true);
     expect(shouldCreateNewThreadInCurrentProject(true, 1)).toBe(true);
   });
+
+  it("opens the picker when there are no projects", () => {
+    expect(shouldCreateNewThreadInCurrentProject(false, 0)).toBe(false);
+    expect(shouldCreateNewThreadInCurrentProject(true, 0)).toBe(false);
+  });
 });
 
 describe("orderItemsByPreferredIds", () => {

@@ -4,11 +4,19 @@ import type { Thread } from "../types";
 import {
   browseInputEndPaddingClass,
   buildBrowseGroups,
+  buildProjectPickerGroups,
   buildThreadActionItems,
+  compareActivityTimestamps,
   enumerateCommandPaletteItems,
   filterPinnedBrowseEntries,
   filterCommandPaletteGroups,
+  isProjectPickerView,
+  latestActivityTimestamp,
+  PROJECT_PICKER_BROWSE_GROUP,
+  PROJECT_PICKER_PROJECTS_GROUP,
+  RECENT_PROJECT_PICKER_LIMIT,
   reduceCommandPaletteUiState,
+  type CommandPaletteActionItem,
   type CommandPaletteGroup,
 } from "./CommandPalette.logic";
 
@@ -406,5 +414,112 @@ describe("filterPinnedBrowseEntries", () => {
       visibleEntries: windowsEntries,
       exactEntry: windowsEntries[0],
     });
+  });
+});
+
+function makePickerAction(
+  value: string,
+  title: string,
+  searchTerms: string[],
+): CommandPaletteActionItem {
+  return {
+    kind: "action",
+    value,
+    searchTerms,
+    title,
+    icon: null,
+    run: async () => undefined,
+  };
+}
+
+describe("latestActivityTimestamp", () => {
+  it("uses the newest live thread in the project set", () => {
+    const timestamp = latestActivityTimestamp({
+      projectKeys: new Set([`${LOCAL_ENVIRONMENT_ID}:${PROJECT_ID}`]),
+      threads: [
+        {
+          environmentId: LOCAL_ENVIRONMENT_ID,
+          projectId: PROJECT_ID,
+          updatedAt: "2026-03-01T00:00:00.000Z",
+          latestUserMessageAt: "2026-03-02T00:00:00.000Z",
+        },
+        {
+          environmentId: LOCAL_ENVIRONMENT_ID,
+          projectId: PROJECT_ID,
+          updatedAt: "2026-03-04T00:00:00.000Z",
+          archivedAt: "2026-03-04T00:00:00.000Z",
+        },
+        {
+          environmentId: LOCAL_ENVIRONMENT_ID,
+          projectId: ProjectId.make("other"),
+          updatedAt: "2026-03-10T00:00:00.000Z",
+        },
+      ],
+    });
+    expect(timestamp).toBe("2026-03-02T00:00:00.000Z");
+  });
+});
+
+describe("compareActivityTimestamps", () => {
+  it("orders newer activity first and leaves idle projects last", () => {
+    expect(compareActivityTimestamps("2026-03-02T00:00:00.000Z", "2026-03-01T00:00:00.000Z")).toBe(
+      -1,
+    );
+    expect(compareActivityTimestamps(null, "2026-03-01T00:00:00.000Z")).toBe(1);
+    expect(compareActivityTimestamps("2026-03-01T00:00:00.000Z", null)).toBe(-1);
+  });
+});
+
+describe("buildProjectPickerGroups", () => {
+  const browseItem = makePickerAction("browse", "Browse...", ["browse", "folder", "explorer"]);
+  const projectItems = Array.from({ length: 7 }, (_, index) =>
+    makePickerAction(`project-${index + 1}`, `Project ${index + 1}`, [
+      `project ${index + 1}`,
+      index === 5 ? "alpha-workspace" : `workspace-${index + 1}`,
+    ]),
+  );
+
+  it("shows browse and the most recent idle projects", () => {
+    const groups = buildProjectPickerGroups({
+      browseItem,
+      projectItems,
+      query: "",
+    });
+    expect(groups.map((group) => group.value)).toEqual([
+      PROJECT_PICKER_BROWSE_GROUP,
+      PROJECT_PICKER_PROJECTS_GROUP,
+    ]);
+    expect(groups[1]?.label).toBe("Recent");
+    expect(groups[1]?.items.map((item) => item.value)).toEqual(
+      projectItems.slice(0, RECENT_PROJECT_PICKER_LIMIT).map((item) => item.value),
+    );
+  });
+
+  it("searches every project, not only the idle five", () => {
+    const groups = buildProjectPickerGroups({
+      browseItem,
+      projectItems,
+      query: "alpha-workspace",
+    });
+    expect(groups.map((group) => group.value)).toEqual([PROJECT_PICKER_PROJECTS_GROUP]);
+    expect(groups[0]?.label).toBe("Projects");
+    expect(groups[0]?.items.map((item) => item.value)).toEqual(["project-6"]);
+  });
+
+  it("keeps browse when the query matches the browse action", () => {
+    const groups = buildProjectPickerGroups({
+      browseItem,
+      projectItems,
+      query: "explorer",
+    });
+    expect(groups.map((group) => group.value)).toEqual([PROJECT_PICKER_BROWSE_GROUP]);
+  });
+});
+
+describe("isProjectPickerView", () => {
+  it("detects the simplified project picker groups", () => {
+    expect(isProjectPickerView(null)).toBe(false);
+    expect(isProjectPickerView({ groups: [{ value: "actions" }] })).toBe(false);
+    expect(isProjectPickerView({ groups: [{ value: PROJECT_PICKER_PROJECTS_GROUP }] })).toBe(true);
   });
 });

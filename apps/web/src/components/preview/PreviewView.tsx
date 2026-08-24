@@ -33,10 +33,14 @@ import { useAtomCommand } from "~/state/use-atom-command";
 import { selectThreadPreviewMiniPlayer, usePreviewMiniPlayerStore } from "~/previewMiniPlayerStore";
 import { useRightPanelStore } from "~/rightPanelStore";
 
+import { isElectron } from "~/env";
+import { cn } from "~/lib/utils";
+
 import { previewBridge } from "./previewBridge";
 import { subscribePreviewAction } from "./previewActionBus";
 import { openPreviewSession } from "./openPreviewSession";
 import { PreviewChromeRow } from "./PreviewChromeRow";
+import { BrowserDeviceToolbar } from "~/browser/BrowserDeviceToolbar";
 import { PreviewEmptyState } from "./PreviewEmptyState";
 import { PreviewMoreMenu } from "./PreviewMoreMenu";
 import {
@@ -60,9 +64,11 @@ import {
   useActiveBrowserRecordingTabIds,
 } from "~/browser/browserRecording";
 import { stackedThreadToast, toastManager } from "~/components/ui/toast";
+import { type PreviewPanelMode } from "./PreviewPanelShell";
 
 interface Props {
   threadRef: ScopedThreadRef;
+  mode?: PreviewPanelMode;
   tabId?: string | null;
   configuredUrls?: ReadonlyArray<string> | undefined;
   visible: boolean;
@@ -80,6 +86,7 @@ const localApi = typeof window === "undefined" ? null : ensureLocalApi();
  */
 export function PreviewView({
   threadRef,
+  mode,
   tabId: requestedTabId,
   configuredUrls,
   visible,
@@ -87,6 +94,7 @@ export function PreviewView({
 }: Props) {
   const [focusUrlNonce, setFocusUrlNonce] = useState<number | undefined>(undefined);
   const [pickActive, setPickActive] = useState(false);
+  const [workspaceAspectRatio, setWorkspaceAspectRatio] = useState<number | null>(null);
   const activeRecordingTabIds = useActiveBrowserRecordingTabIds();
   const pickActiveRef = useRef(false);
   const isMountedRef = useRef(true);
@@ -651,11 +659,37 @@ export function PreviewView({
     });
   }, [handleRefresh, handleResetZoom, handleZoomIn, handleZoomOut, visible]);
 
+  const showWorkspaceDeviceToolbar = mode === "embedded";
+
   return (
     <div
       className="flex min-h-0 flex-1 flex-col bg-background"
       data-thread-key={scopedThreadKey(threadRef)}
     >
+      {showWorkspaceDeviceToolbar ? (
+        <div
+          className={cn(
+            "flex h-[var(--workspace-topbar-height)] shrink-0 items-center bg-background",
+            isElectron && "drag-region",
+          )}
+          data-browser-workspace-header=""
+        >
+          <BrowserDeviceToolbar
+            variant="workspace"
+            setting={viewport}
+            width={panelRect?.width ?? 800}
+            panelSize={panelRect ? { width: panelRect.width, height: panelRect.height } : null}
+            aspectRatio={workspaceAspectRatio}
+            onAspectRatioChange={setWorkspaceAspectRatio}
+            onChange={async (next) => {
+              if (!runtimeTabId) return;
+              await commitBrowserViewportChange(runtimeTabId, next);
+            }}
+            disabled={!runtimeTabId}
+          />
+          <div className="min-h-0 min-w-0 flex-1" />
+        </div>
+      ) : null}
       <PreviewChromeRow
         url={url}
         loading={loading}
