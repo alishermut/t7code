@@ -37,9 +37,12 @@ describe("task manager grouping", () => {
       "0:Docs",
     ]);
     const grouped = groupTaskRowsByStatus(rows);
-    expect(grouped[0]?.rows.map((row) => row.task.title)).toEqual(["Auth"]);
-    expect(grouped[1]?.rows.map((row) => row.task.title)).toEqual(["Tokens"]);
-    expect(grouped[3]?.rows.map((row) => row.task.title)).toEqual(["Docs"]);
+    const titlesIn = (status: string) =>
+      grouped.find((group) => group.status === status)?.rows.map((row) => row.task.title) ?? [];
+    expect(titlesIn("open")).toEqual(["Auth"]);
+    expect(titlesIn("doing")).toEqual(["Tokens"]);
+    expect(titlesIn("review")).toEqual([]);
+    expect(titlesIn("done")).toEqual(["Docs"]);
   });
 
   it("keeps orphans whose parent is missing", () => {

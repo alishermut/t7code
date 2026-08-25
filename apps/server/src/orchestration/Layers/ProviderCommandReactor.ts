@@ -32,6 +32,12 @@ import { ProviderAdapterRequestError } from "../../provider/Errors.ts";
 import type { ProviderServiceError } from "../../provider/Errors.ts";
 import { TextGeneration } from "../../textGeneration/TextGeneration.ts";
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
+import * as McpProviderSession from "../../mcp/McpProviderSession.ts";
+import * as ProjectTaskStore from "../../projectTasks/ProjectTaskStore.ts";
+import {
+  composeTaskPolicyPreamble,
+  withTaskPolicyPreamble,
+} from "../../projectTasks/TaskPolicyInstructions.ts";
 import { ProviderRegistry } from "../../provider/Services/ProviderRegistry.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
@@ -310,6 +316,7 @@ const make = Effect.gen(function* () {
   const vcsStatusBroadcaster = yield* VcsStatusBroadcaster;
   const textGeneration = yield* TextGeneration;
   const serverSettingsService = yield* ServerSettingsService;
+  const projectTaskStore = yield* ProjectTaskStore.ProjectTaskStore;
   const serverCommandId = (tag: string) =>
     crypto.randomUUIDv4.pipe(Effect.map((uuid) => CommandId.make(`server:${tag}:${uuid}`)));
   const serverEventId = () => crypto.randomUUIDv4.pipe(Effect.map(EventId.make));
@@ -769,6 +776,33 @@ const make = Effect.gen(function* () {
     return startedSession.threadId;
   });
 
+  /**
+   * The backlog block every provider sees.
+   *
+   * Gated on the `t3-code` MCP session because the policy tells the agent to
+   * call `tasks_*`; without the toolkit attached that is an instruction it
+   * cannot follow. Failure here is never allowed to block a turn — a backlog
+   * the store cannot read is a worse reason to lose someone's message than
+   * anything the policy buys.
+   */
+  const taskPolicyPreambleForThread = Effect.fnUntraced(function* (input: {
+    readonly threadId: ThreadId;
+    readonly projectId: ProjectId;
+  }) {
+    if (McpProviderSession.readMcpProviderSession(input.threadId) === undefined) {
+      return null;
+    }
+    return yield* projectTaskStore.list(input.projectId).pipe(
+      Effect.map((tasks) => composeTaskPolicyPreamble({ tasks })),
+      Effect.catchCause((cause) =>
+        Effect.logWarning("provider command reactor skipped the backlog preamble", {
+          threadId: input.threadId,
+          cause: Cause.pretty(cause),
+        }).pipe(Effect.as(null)),
+      ),
+    );
+  });
+
   const buildSendTurnRequestForThread = Effect.fnUntraced(function* (input: {
     readonly threadId: ThreadId;
     readonly messageText: string;
@@ -790,7 +824,14 @@ const make = Effect.gen(function* () {
     if (input.modelSelection !== undefined) {
       threadModelSelections.set(input.threadId, input.modelSelection);
     }
-    const normalizedInput = toNonEmptyProviderInput(input.messageText);
+    const taskPolicyPreamble = yield* taskPolicyPreambleForThread({
+      threadId: input.threadId,
+      projectId: thread.projectId,
+    });
+    const normalizedInput = withTaskPolicyPreamble({
+      text: toNonEmptyProviderInput(input.messageText),
+      preamble: taskPolicyPreamble,
+    });
     const normalizedAttachments = input.attachments ?? [];
     const activeSession = yield* providerService
       .listSessions()

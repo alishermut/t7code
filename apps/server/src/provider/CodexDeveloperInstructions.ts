@@ -11,17 +11,6 @@ For browser work, first call \`preview_status\`. If no automation-capable previe
 Do not switch to global browser skills, Chrome, Node REPL browser automation, standalone Playwright, or agent-browser merely because the preview is initially closed or a first call fails. Use an alternative browser system only when the T3 preview tools are absent, the user explicitly requests another browser, or \`preview_open\` returns an explicit unsupported/unavailable error. A failed T3 preview tool call should be inspected and retried with corrected arguments when the error is actionable.
 `;
 
-const T3_CODE_TASK_TOOL_INSTRUCTIONS = `
-
-## T3 Code project backlog
-
-The \`t3-code\` MCP server also exposes \`tasks_list\`, \`tasks_create\`, \`tasks_update\`, and \`tasks_claim\`. That list is the project's long-horizon goals and tasks. It outlives this session and is shared with the user and every other agent in the project.
-
-Do not confuse it with \`update_plan\` or other turn-local todos. Those only track steps for this turn.
-
-At the start of lasting work, call \`tasks_list\`. Create or split goals when the user names work that should survive this session. Claim a task with \`tasks_claim\` before implementing it. Mark it done when the work is actually complete.
-`;
-
 /**
  * The browser block is omitted entirely when the preview tools aren't attached.
  * Describing `preview_*` tools that aren't in the turn's tool list would be
@@ -29,11 +18,12 @@ At the start of lasting work, call \`tasks_list\`. Create or split goals when th
  * from Playwright and agent-browser, so leaving them in would talk it out of
  * the only browser automation it still has.
  *
- * The backlog block uses the same gate: those MCP tools arrive on the same
- * `t3-code` server, so they are present exactly when this session attached it.
+ * The project backlog deliberately has no block here. Its policy is injected
+ * once for every provider in ProviderCommandReactor, so duplicating it for
+ * Codex alone would be both wasted tokens and a second copy to keep in sync.
  */
-const mcpToolInstructions = (mcpToolsAvailable: boolean): string =>
-  mcpToolsAvailable ? `${T3_CODE_BROWSER_TOOL_INSTRUCTIONS}${T3_CODE_TASK_TOOL_INSTRUCTIONS}` : "";
+const browserToolInstructions = (browserToolsAvailable: boolean): string =>
+  browserToolsAvailable ? T3_CODE_BROWSER_TOOL_INSTRUCTIONS : "";
 
 export const codexPlanModeDeveloperInstructions = (
   browserToolsAvailable: boolean,
@@ -165,7 +155,7 @@ Do not ask "should I proceed?" in the final output. The user can easily switch o
 Only produce at most one \`<proposed_plan>\` block per turn, and only when you are presenting a complete spec.
 
 If the user stays in Plan mode and asks for revisions after a prior \`<proposed_plan>\`, any new \`<proposed_plan>\` must be a complete replacement. If the user indicates that the prior plan is not acceptable but does not provide enough information to produce a complete replacement, address the concern and continue planning without producing a \`<proposed_plan>\` block. If the follow-up neither requires changes nor calls the plan into question (e.g. clarifying question), answer it before the block, then reproduce the prior \`<proposed_plan>\` unchanged.
-${mcpToolInstructions(browserToolsAvailable)}
+${browserToolInstructions(browserToolsAvailable)}
 </collaboration_mode>`;
 
 export const codexDefaultModeDeveloperInstructions = (
@@ -181,7 +171,7 @@ Your active mode changes only when new developer instructions with a different \
 Use the \`request_user_input\` tool only when it is listed in the available tools for this turn.
 
 In Default mode, strongly prefer making reasonable assumptions and executing the user's request rather than stopping to ask questions. If you absolutely must ask a question because the answer cannot be discovered from local context and a reasonable assumption would be risky, ask the user directly with a concise plain-text question. Never write a multiple choice question as a textual assistant message.
-${mcpToolInstructions(browserToolsAvailable)}
+${browserToolInstructions(browserToolsAvailable)}
 </collaboration_mode>`;
 
 export interface CodexRuntimeInfo {

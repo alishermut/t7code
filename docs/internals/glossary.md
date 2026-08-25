@@ -149,7 +149,13 @@ Turn-local todos (`TodoWrite`, Cursor `update_todos`, Codex `update_plan`) flatt
 
 #### Project task
 
-A durable goal or child task scoped to a project. Statuses are `open`, `doing`, `blocked`, and `done`. A task may nest under a parent and may be claimed by a thread.
+A durable goal or child task scoped to a project. Statuses are `open`, `doing`, `review`, `blocked`, and `done`. `review` marks work that happened but has not been accepted yet. A task may nest under a parent and may be claimed by a thread.
+
+Creation is deduplicated: filing a task whose title matches an unfinished task in the same project under the same parent returns that task with `matchedExisting` set, rather than adding a near-duplicate. Deleting a task promotes its children to top level instead of cascading.
+
+Backlog policy is injected once for every provider in [ProviderCommandReactor.ts][28] using [TaskPolicyInstructions.ts][29], never through a provider-native prompt slot, so no adapter carries task-specific code. [ProjectTaskReactor.ts][30] advances a claimed task from `doing` to `review` when a turn lands changes, reading the canonical runtime event stream rather than anything provider-shaped. [ProjectTaskHealth.ts][31] records which provider sessions have reached the toolkit.
+
+An undecodable `project-tasks.json` is moved aside as `project-tasks.unreadable-<timestamp>.json` and the backlog starts empty; if the file cannot be moved, the store runs without persistence so the original is never overwritten.
 
 ## Practical Shortcuts
 
@@ -193,3 +199,7 @@ A durable goal or child task scoped to a project. Statuses are `open`, `doing`, 
 [25]: ../../apps/server/src/orchestration/ThreadPlanProgress.ts
 [26]: ../../packages/contracts/src/projectTasks.ts
 [27]: ../../apps/server/src/projectTasks/ProjectTaskStore.ts
+[28]: ../../apps/server/src/orchestration/Layers/ProviderCommandReactor.ts
+[29]: ../../apps/server/src/projectTasks/TaskPolicyInstructions.ts
+[30]: ../../apps/server/src/orchestration/Layers/ProjectTaskReactor.ts
+[31]: ../../apps/server/src/projectTasks/ProjectTaskHealth.ts

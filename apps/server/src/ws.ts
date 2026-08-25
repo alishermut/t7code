@@ -116,6 +116,7 @@ import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts
 import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import * as UsageService from "./usage/UsageService.ts";
+import * as ProjectTaskHealth from "./projectTasks/ProjectTaskHealth.ts";
 import * as ProjectTaskStore from "./projectTasks/ProjectTaskStore.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import * as PullRequestService from "./pullRequest/PullRequestService.ts";
@@ -488,6 +489,7 @@ const makeWsRpcLayer = (
       const resourceTelemetry = yield* ResourceTelemetry.ResourceTelemetry;
       const usage = yield* UsageService.UsageService;
       const projectTasks = yield* ProjectTaskStore.ProjectTaskStore;
+      const projectTaskHealth = yield* ProjectTaskHealth.ProjectTaskHealth;
       const relayClient = yield* RelayClient.RelayClient;
       const authorizationError = (requiredScope: AuthEnvironmentScope) =>
         new EnvironmentAuthorizationError({
@@ -1682,7 +1684,10 @@ const makeWsRpcLayer = (
         [WS_METHODS.projectTasksList]: (input) =>
           observeRpcEffect(
             WS_METHODS.projectTasksList,
-            projectTasks.list(input.projectId).pipe(Effect.map((tasks) => ({ tasks }))),
+            Effect.map(
+              Effect.all([projectTasks.list(input.projectId), projectTaskHealth.read]),
+              ([tasks, health]) => ({ tasks, health }),
+            ),
             { "rpc.aggregate": "projectTasks" },
           ),
         [WS_METHODS.projectTasksCreate]: (input) =>
@@ -1691,6 +1696,26 @@ const makeWsRpcLayer = (
           }),
         [WS_METHODS.projectTasksUpdate]: (input) =>
           observeRpcEffect(WS_METHODS.projectTasksUpdate, projectTasks.update(input), {
+            "rpc.aggregate": "projectTasks",
+          }),
+        [WS_METHODS.subscribeProjectTasks]: (input) =>
+          observeRpcStreamEffect(
+            WS_METHODS.subscribeProjectTasks,
+            // Health is re-read per emission rather than captured once, so the
+            // board's reachability strip does not freeze at subscribe time.
+            Effect.succeed(
+              projectTasks
+                .changes(input.projectId)
+                .pipe(
+                  Stream.mapEffect((tasks) =>
+                    Effect.map(projectTaskHealth.read, (health) => ({ tasks, health })),
+                  ),
+                ),
+            ),
+            { "rpc.aggregate": "projectTasks" },
+          ),
+        [WS_METHODS.projectTasksDelete]: (input) =>
+          observeRpcEffect(WS_METHODS.projectTasksDelete, projectTasks.remove(input), {
             "rpc.aggregate": "projectTasks",
           }),
         [WS_METHODS.serverRetryResourceTelemetry]: (_input) =>

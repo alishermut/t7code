@@ -1,8 +1,9 @@
 import {
   ProjectTask,
+  ProjectTaskCreateResult,
+  ProjectTaskDeleteResult,
   ProjectTaskError,
   ProjectTaskId,
-  ProjectTaskListResult,
   ProjectTaskStatus,
   TrimmedNonEmptyString,
   TrimmedString,
@@ -12,11 +13,13 @@ import { Tool, Toolkit } from "effect/unstable/ai";
 
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as ProjectionSnapshotQuery from "../../../orchestration/Services/ProjectionSnapshotQuery.ts";
+import * as ProjectTaskHealth from "../../../projectTasks/ProjectTaskHealth.ts";
 import * as ProjectTaskStore from "../../../projectTasks/ProjectTaskStore.ts";
 
 const dependencies = [
   McpInvocationContext.McpInvocationContext,
   ProjectTaskStore.ProjectTaskStore,
+  ProjectTaskHealth.ProjectTaskHealth,
   ProjectionSnapshotQuery.ProjectionSnapshotQuery,
 ];
 
@@ -33,15 +36,18 @@ const TaskTitle = describedString(
 const TaskNotes = TrimmedString.check(Schema.isMaxLength(4000));
 
 export const TasksListTool = Tool.make("tasks_list", {
-  description: `${BACKLOG_PREAMBLE} List open, doing, blocked, and done tasks for the current project.`,
+  description: `${BACKLOG_PREAMBLE} List open, doing, review, blocked, and done tasks for the current project.`,
   parameters: Schema.Struct({
     status: Schema.optional(
       ProjectTaskStatus.annotate({
-        description: "If set, only return tasks with this status: open, doing, blocked, or done.",
+        description:
+          "If set, only return tasks with this status: open, doing, review, blocked, or done.",
       }),
     ),
   }),
-  success: ProjectTaskListResult,
+  // Deliberately not the wire result: reachability data on that shape is for
+  // the operator looking at the Tasks board, not for the agent.
+  success: Schema.Struct({ tasks: Schema.Array(ProjectTask) }),
   failure: ProjectTaskError,
   dependencies,
 })
@@ -51,7 +57,7 @@ export const TasksListTool = Tool.make("tasks_list", {
   .annotate(Tool.Idempotent, true);
 
 export const TasksCreateTool = Tool.make("tasks_create", {
-  description: `${BACKLOG_PREAMBLE} Create a backlog item. Pass parentId to split a goal into a child task.`,
+  description: `${BACKLOG_PREAMBLE} Create a backlog item. Pass parentId to split a goal into a child task. If an unfinished task in this project already has the same title, that task is returned instead and \`matchedExisting\` is true — do not retry with a reworded title.`,
   parameters: Schema.Struct({
     title: TaskTitle,
     notes: Schema.optional(TaskNotes).annotate({
@@ -69,7 +75,7 @@ export const TasksCreateTool = Tool.make("tasks_create", {
       }),
     ),
   }),
-  success: ProjectTask,
+  success: ProjectTaskCreateResult,
   failure: ProjectTaskError,
   dependencies,
 })
@@ -77,7 +83,7 @@ export const TasksCreateTool = Tool.make("tasks_create", {
   .annotate(Tool.Destructive, false);
 
 export const TasksUpdateTool = Tool.make("tasks_update", {
-  description: `${BACKLOG_PREAMBLE} Update a backlog item's title, notes, status (open|doing|blocked|done), or parent.`,
+  description: `${BACKLOG_PREAMBLE} Update a backlog item's title, notes, status (open|doing|review|blocked|done), or parent.`,
   parameters: Schema.Struct({
     id: describedString(ProjectTaskId, "Task to update."),
     title: Schema.optional(TaskTitle).annotate({
@@ -88,7 +94,7 @@ export const TasksUpdateTool = Tool.make("tasks_update", {
     }),
     status: Schema.optional(
       ProjectTaskStatus.annotate({
-        description: "open, doing, blocked, or done.",
+        description: "open, doing, review, blocked, or done.",
       }),
     ),
     parentId: Schema.optional(
@@ -116,9 +122,22 @@ export const TasksClaimTool = Tool.make("tasks_claim", {
   .annotate(Tool.Title, "Claim project task")
   .annotate(Tool.Destructive, false);
 
+export const TasksDeleteTool = Tool.make("tasks_delete", {
+  description: `${BACKLOG_PREAMBLE} Permanently remove a backlog item. Child tasks are kept and promoted to top level. Use this for items filed by mistake — finished work belongs in status done, not deleted.`,
+  parameters: Schema.Struct({
+    id: describedString(ProjectTaskId, "Task to delete."),
+  }),
+  success: ProjectTaskDeleteResult,
+  failure: ProjectTaskError,
+  dependencies,
+})
+  .annotate(Tool.Title, "Delete project task")
+  .annotate(Tool.Destructive, true);
+
 export const TasksToolkit = Toolkit.make(
   TasksListTool,
   TasksCreateTool,
   TasksUpdateTool,
+  TasksDeleteTool,
   TasksClaimTool,
 );

@@ -36,10 +36,11 @@ it("exports provider-compatible object schemas with described parameters", () =>
   }
 });
 
-it("names the four backlog tools", () => {
+it("names the backlog tools", () => {
   expect(Object.keys(TasksToolkit.tools).sort()).toEqual([
     "tasks_claim",
     "tasks_create",
+    "tasks_delete",
     "tasks_list",
     "tasks_update",
   ]);
