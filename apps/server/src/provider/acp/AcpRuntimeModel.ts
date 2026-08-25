@@ -264,82 +264,40 @@ function extractToolCallCommand(rawInput: unknown, title: string | undefined): s
   return extractCommandFromTitle(title);
 }
 
-// Some ACP agents (observed with Grok's CLI) resend the ENTIRE accumulated tool-call
-// output on every `tool_call_update` notification instead of a delta, so a redrawing
-// terminal progress bar can balloon a single tool call to hundreds of KB per update at
-// several updates per second. Cap what we retain/emit to a bounded tail so one busy tool
-// call cannot flood runtime event ingestion. We always keep the tail: `tool_call_update`
-// deltas routinely omit `kind`, so there is no reliable way to tell a redrawing terminal
-// from another tool here, and the end is the useful part of any live-growing output.
-const TOOL_CALL_CONTENT_MAX_CHARS = 8_000;
-const TOOL_CALL_CONTENT_TRUNCATION_MARKER = "[Earlier output truncated]\n\n";
-
-function boundToolCallOutputText(text: string): string {
-  if (text.length <= TOOL_CALL_CONTENT_MAX_CHARS) {
-    return text;
-  }
-  const tail = text.slice(text.length - TOOL_CALL_CONTENT_MAX_CHARS);
-  return `${TOOL_CALL_CONTENT_TRUNCATION_MARKER}${tail}`;
+function isSessionFileUri(value: string): boolean {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return false;
+  if (/^(?:https?:|data:|blob:)/i.test(trimmed)) return false;
+  return true;
 }
 
-const RAW_OUTPUT_TEXT_FIELDS = ["content", "stdout", "stderr", "output"] as const;
-
-// `rawOutput` is provider-defined and, for terminal-shaped tools, mirrors the same
-// cumulative text-growth problem as `content` (see the comment above). Bound its known
-// text-bearing fields the same way so a chatty provider cannot smuggle unbounded output
-// through this field instead.
-function boundToolCallRawOutput(rawOutput: unknown): unknown {
-  if (!isRecord(rawOutput)) {
-    return rawOutput;
-  }
-  let changed = false;
-  const bounded: Record<string, unknown> = { ...rawOutput };
-  for (const field of RAW_OUTPUT_TEXT_FIELDS) {
-    const value = rawOutput[field];
-    if (typeof value === "string" && value.length > TOOL_CALL_CONTENT_MAX_CHARS) {
-      bounded[field] = boundToolCallOutputText(value);
-      changed = true;
+function collectGeneratedMediaPathsFromToolCallContent(
+  content: ReadonlyArray<EffectAcpSchema.ToolCallContent> | null | undefined,
+): string[] {
+  if (!content) return [];
+  const paths: string[] = [];
+  const seen = new Set<string>();
+  const push = (value: string | null | undefined) => {
+    if (value == null || !isSessionFileUri(value) || seen.has(value)) return;
+    seen.add(value);
+    paths.push(value);
+  };
+  for (const entry of content) {
+    if (entry.type === "diff") {
+      push(entry.path);
+      continue;
+    }
+    if (entry.type !== "content") continue;
+    const nested = entry.content;
+    if (nested.type === "image") {
+      push(nested.uri);
+      continue;
+    }
+    if (nested.type === "resource_link") {
+      push(nested.uri);
     }
   }
-  return changed ? bounded : rawOutput;
-}
-
-interface ExtractedToolCallContent {
-  readonly text: string | undefined;
-  readonly content: ReadonlyArray<EffectAcpSchema.ToolCallContent> | undefined;
-}
-
-function toolCallContentText(entry: EffectAcpSchema.ToolCallContent): string | undefined {
-  if (entry.type !== "content" || entry.content.type !== "text") {
-    return undefined;
-  }
-  return entry.content.text;
-}
-
-// Trim is used for display `text`, so whitespace-only (or whitespace-padded) entries never
-// contribute to `chunks` and used to take the early returns with the original array. Bound
-// each text entry independently so those paths cannot persist an unbounded terminal buffer
-// on `toolCall.data.content` / `rawPayload`.
-function boundToolCallContentEntries(
-  content: ReadonlyArray<EffectAcpSchema.ToolCallContent>,
-): ReadonlyArray<EffectAcpSchema.ToolCallContent> {
-  let changed = false;
-  const bounded = content.map((entry) => {
-    const text = toolCallContentText(entry);
-    if (text === undefined || text.length <= TOOL_CALL_CONTENT_MAX_CHARS) {
-      return entry;
-    }
-    changed = true;
-    const trimmed = text.trim();
-    return {
-      type: "content",
-      content: {
-        type: "text",
-        text: boundToolCallOutputText(trimmed.length > 0 ? trimmed : text),
-      },
-    } as const;
-  });
-  return changed ? bounded : content;
+  return paths;
 }
 
 function extractTextContentFromToolCallContent(
@@ -467,8 +425,8 @@ function makeToolCallState(
   }
   const title = input.title?.trim() || undefined;
   const command = extractToolCallCommand(input.rawInput, title);
-  const extractedContent = extractTextContentFromToolCallContent(input.content);
-  const textContent = extractedContent.text;
+  const textContent = extractTextContentFromToolCallContent(input.content);
+  const generatedMediaPaths = collectGeneratedMediaPathsFromToolCallContent(input.content);
   const normalizedTitle =
     title && title.toLowerCase() !== "terminal" && title.toLowerCase() !== "tool call"
       ? title
@@ -492,6 +450,9 @@ function makeToolCallState(
   }
   if (input.locations !== undefined) {
     data.locations = input.locations;
+  }
+  if (generatedMediaPaths.length > 0) {
+    data.files = generatedMediaPaths.map((path) => ({ path }));
   }
   const fallbackDetail = command ?? normalizedTitle ?? textContent;
   const hasPresentationSeed =

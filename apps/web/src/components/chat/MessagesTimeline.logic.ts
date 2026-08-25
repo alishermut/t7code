@@ -225,6 +225,7 @@ export type MessagesTimelineRow =
       showAssistantCopyButton: boolean;
       assistantCopyStreaming: boolean;
       assistantTurnDiffSummary?: TurnDiffSummary | undefined;
+      turnToolMediaPaths?: ReadonlyArray<string> | undefined;
       revertTurnCount?: number | undefined;
     }
   | {
@@ -669,6 +670,17 @@ export function deriveMessagesTimelineRows(input: {
   revertTurnCountByUserMessageId: ReadonlyMap<MessageId, number>;
 }): MessagesTimelineRow[] {
   const nextRows: MessagesTimelineRow[] = [];
+  const toolPathsByTurnId = new Map<string, string[]>();
+  for (const entry of input.timelineEntries) {
+    if (entry.kind !== "work" || entry.entry.turnId == null) continue;
+    const files = entry.entry.changedFiles;
+    if (files === undefined || files.length === 0) continue;
+    const current = toolPathsByTurnId.get(entry.entry.turnId) ?? [];
+    for (const filePath of files) {
+      current.push(filePath);
+    }
+    toolPathsByTurnId.set(entry.entry.turnId, current);
+  }
   const durationStartByMessageId = computeMessageDurationStart(
     input.timelineEntries.flatMap((entry) => (entry.kind === "message" ? [entry.message] : [])),
   );
@@ -1026,6 +1038,10 @@ export function deriveMessagesTimelineRows(input: {
         timelineEntry.message.role === "assistant"
           ? input.turnDiffSummaryByAssistantMessageId.get(timelineEntry.message.id)
           : undefined,
+      turnToolMediaPaths:
+        timelineEntry.message.role === "assistant" && timelineEntry.message.turnId
+          ? toolPathsByTurnId.get(timelineEntry.message.turnId)
+          : undefined,
       revertTurnCount:
         timelineEntry.message.role === "user"
           ? input.revertTurnCountByUserMessageId.get(timelineEntry.message.id)
@@ -1128,6 +1144,7 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
         a.showAssistantCopyButton === bm.showAssistantCopyButton &&
         a.assistantCopyStreaming === bm.assistantCopyStreaming &&
         a.assistantTurnDiffSummary === bm.assistantTurnDiffSummary &&
+        a.turnToolMediaPaths === bm.turnToolMediaPaths &&
         a.revertTurnCount === bm.revertTurnCount
       );
     }
