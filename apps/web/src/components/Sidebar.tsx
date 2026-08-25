@@ -40,7 +40,6 @@ import {
   CircleAlertIcon,
   EllipsisIcon,
   CircleCheckIcon,
-  CircleDashedIcon,
   FolderIcon,
   GitBranchIcon,
   MessageSquareIcon,
@@ -129,6 +128,7 @@ import {
 } from "../threadRoutes";
 import { formatRelativeTimeLabel, parseTimestampDate } from "../timestampFormat";
 import type { SidebarThreadSummary } from "../types";
+import { PixelGridLoader, type PixelGridState } from "./PixelGridLoader";
 import { cn } from "~/lib/utils";
 import { buildThreadActionMenuItems } from "./threadActionMenu.logic";
 import {
@@ -298,6 +298,7 @@ function SidebarThreadTooltip({
   branchMismatch,
   terminalStatus,
   terminalProcessCount,
+  status,
 }: {
   thread: SidebarThreadSummary;
   projectTitle: string | null;
@@ -314,6 +315,13 @@ function SidebarThreadTooltip({
   } | null;
   terminalStatus: TerminalStatusIndicator | null;
   terminalProcessCount: number;
+  /** Omitted entirely when the row has no status, so the card gains no empty line. */
+  status: {
+    readonly label: string;
+    readonly description: string;
+    readonly grid: PixelGridState;
+    readonly className: string;
+  } | null;
 }) {
   const driverKind = providerEntry?.driverKind ?? null;
   return (
@@ -329,6 +337,17 @@ function SidebarThreadTooltip({
           {thread.title}
         </div>
         <div className="grid gap-1.5 pl-0.5 text-xs text-muted-foreground">
+          {status ? (
+            <div className="flex min-w-0 items-start gap-2">
+              <span className={cn("mt-[3px] flex shrink-0", status.className)}>
+                <PixelGridLoader state={status.grid} />
+              </span>
+              <div className="min-w-0 flex-1 wrap-break-word leading-5">
+                <span className="text-foreground/75">{status.label}</span>
+                <span className="text-muted-foreground"> — {status.description}</span>
+              </div>
+            </div>
+          ) : null}
           {projectTitle ? (
             <div className="flex min-w-0 items-center gap-2">
               <ProjectFavicon
@@ -894,58 +913,69 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     status === "working" || status === "monitoring" || status === "approval" || status === "input";
   const shouldRecede =
     (status === "ready" || isInFlight) && !isUnread && !isWoke && !props.isActive && !isSelected;
-  // Status hues follow the system-wide convention set by sidebar v1 and the
-  // mobile Live Activity/widgets (amber approval, indigo input, sky working)
-  // so a thread reads the same color everywhere it surfaces.
+  // Colour is reserved for rows that want something from you: amber approval,
+  // indigo input, red failed, emerald done. Working and Monitoring are progress,
+  // not a request, so they run neutral and let the animated indicator carry the
+  // "still going" signal. Amber/indigo/red/emerald still match the mobile Live
+  // Activity and widgets; the neutral working state is a web-sidebar divergence.
   const topStatus =
     status === "working"
       ? {
           label: "Working",
+          description: "The agent is running.",
           icon: "working" as const,
-          // No shimmer: a label that animates forever is noise in a sidebar
-          // full of them (and repaints every vsync on high-refresh displays).
-          // Working is a background state, so it rests at the dim end of what
-          // the old pulse cycled through; only the thread you have open gets
-          // the label at full strength.
-          className: cn("text-sky-600 dark:text-sky-400", !props.isActive && "opacity-75"),
+          grid: "running" as const,
+          // Working is a background state, so it rests at the dim end; only the
+          // thread you have open gets the indicator at full strength.
+          className: cn("text-muted-foreground", !props.isActive && "opacity-75"),
         }
       : status === "monitoring"
         ? {
-            // Monitoring is calm background presence, not active progress
-            // (monitoring-pill D6), so it keeps the label at full strength.
             label: "Monitoring",
+            description: "Watching in the background — nothing else is running.",
             icon: "monitoring" as const,
-            className: "text-sky-600 dark:text-sky-400",
+            grid: "running" as const,
+            className: "text-muted-foreground",
           }
         : status === "approval"
           ? {
               label: "Approval",
+              description: "Stopped — waiting on your permission.",
               icon: "approval" as const,
-              className: "text-amber-700 dark:text-amber-300",
+              grid: "stopped" as const,
+              className: "text-amber-600 dark:text-amber-300",
             }
           : status === "input"
             ? {
                 label: "Input",
+                description: "Stopped — the agent asked you a question.",
                 icon: "input" as const,
-                className: "text-indigo-600 dark:text-indigo-300",
+                grid: "stopped" as const,
+                className: "text-sky-600 dark:text-sky-400",
               }
             : status === "failed"
               ? {
                   label: "Failed",
+                  description: "The session errored.",
                   icon: "failed" as const,
+                  grid: "stopped" as const,
                   className: "text-red-700 dark:text-red-300",
                 }
               : isWoke
                 ? {
                     label: "Woke",
+                    description: "The snooze finished. Click to un-snooze.",
                     icon: "woke" as const,
-                    className: "text-amber-700 dark:text-amber-300",
+                    grid: "muted" as const,
+                    className: "text-muted-foreground",
                   }
                 : isUnread
                   ? {
                       label: "Done",
+                      description: "Finished, and not opened since.",
                       icon: "done" as const,
-                      className: "text-emerald-700 dark:text-emerald-300",
+                      grid: "muted" as const,
+                      className: "text-muted-foreground",
                     }
                   : null;
   const isWokeStatus = topStatus?.icon === "woke";
@@ -1018,6 +1048,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       branchMismatch={branchMismatch}
       terminalStatus={terminalStatus}
       terminalProcessCount={terminalProcessCount}
+      status={topStatus}
     />
   );
 
@@ -1509,7 +1540,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                                 topStatus.className,
                               )}
                             >
-                              <AlarmClockIcon aria-hidden className="size-3.5 shrink-0" />
+                              <PixelGridLoader state={topStatus.grid} />
                               <span role="status" className="sr-only">
                                 {topStatus.label}
                               </span>
@@ -1528,13 +1559,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                                 topStatus.className,
                               )}
                             >
-                              {topStatus.icon === "working" || topStatus.icon === "monitoring" ? (
-                                <CircleDashedIcon aria-hidden className="size-3.5 shrink-0" />
-                              ) : topStatus.icon === "done" ? (
-                                <CircleCheckIcon aria-hidden className="size-3.5 shrink-0" />
-                              ) : (
-                                <CircleAlertIcon aria-hidden className="size-3.5 shrink-0" />
-                              )}
+                              <PixelGridLoader state={topStatus.grid} />
                               <span role="status" className="sr-only">
                                 {topStatus.label}
                               </span>
