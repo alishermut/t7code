@@ -19,18 +19,54 @@ export const EMPTY_PROJECT_TASK_DOCUMENT: ProjectTaskDocument = {
   tasks: [],
 };
 
+/**
+ * Titles are matched loosely so "Fix login redirect." and "fix  login redirect"
+ * are the same backlog item. Deliberately not fuzzy beyond this: silently
+ * folding two genuinely different tasks together is worse than one duplicate.
+ */
+function normalizeTitleForMatch(title: string): string {
+  return title
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/[.!?]+$/, "");
+}
+
+function findOpenDuplicate(
+  document: ProjectTaskDocument,
+  projectId: ProjectId,
+  title: string,
+  parentId: ProjectTaskId | null,
+): ProjectTask | undefined {
+  const needle = normalizeTitleForMatch(title);
+  return document.tasks.find(
+    (task) =>
+      task.projectId === projectId &&
+      task.status !== "done" &&
+      task.parentId === parentId &&
+      normalizeTitleForMatch(task.title) === needle,
+  );
+}
+
 export function createProjectTask(
   document: ProjectTaskDocument,
   input: ProjectTaskCreateInput,
   now: string,
   id: ProjectTaskId,
-): { readonly document: ProjectTaskDocument; readonly task: ProjectTask } {
+): {
+  readonly document: ProjectTaskDocument;
+  readonly result: { readonly task: ProjectTask; readonly matchedExisting: boolean };
+} {
   const parentId = input.parentId ?? null;
   if (parentId !== null && findTask(document, input.projectId, parentId) === undefined) {
     throw new ProjectTaskError({
       reason: "parent_missing",
       detail: `Parent task '${parentId}' was not found in this project.`,
     });
+  }
+  const duplicate = findOpenDuplicate(document, input.projectId, input.title, parentId);
+  if (duplicate !== undefined) {
+    return { document, result: { task: duplicate, matchedExisting: true } };
   }
   const task: ProjectTask = {
     id,
@@ -43,14 +79,17 @@ export function createProjectTask(
     createdAt: now,
     updatedAt: now,
   };
-  return { document: { version: 1, tasks: [...document.tasks, task] }, task };
+  return {
+    document: { version: 1, tasks: [...document.tasks, task] },
+    result: { task, matchedExisting: false },
+  };
 }
 
 export function updateProjectTask(
   document: ProjectTaskDocument,
   input: ProjectTaskUpdateInput,
   now: string,
-): { readonly document: ProjectTaskDocument; readonly task: ProjectTask } {
+): { readonly document: ProjectTaskDocument; readonly result: ProjectTask } {
   const current = findTask(document, input.projectId, input.id);
   if (current === undefined) {
     throw new ProjectTaskError({
@@ -98,7 +137,43 @@ export function updateProjectTask(
       version: 1,
       tasks: document.tasks.map((candidate) => (candidate.id === task.id ? task : candidate)),
     },
-    task,
+    result: task,
+  };
+}
+
+export function deleteProjectTask(
+  document: ProjectTaskDocument,
+  projectId: ProjectId,
+  id: ProjectTaskId,
+  now: string,
+): {
+  readonly document: ProjectTaskDocument;
+  readonly result: {
+    readonly id: ProjectTaskId;
+    readonly promotedChildIds: ReadonlyArray<ProjectTaskId>;
+  };
+} {
+  if (findTask(document, projectId, id) === undefined) {
+    throw new ProjectTaskError({
+      reason: "not_found",
+      detail: `Task '${id}' was not found in this project.`,
+    });
+  }
+  const children = document.tasks.filter(
+    (task) => task.projectId === projectId && task.parentId === id,
+  );
+  return {
+    document: {
+      version: 1,
+      tasks: document.tasks
+        .filter((task) => !(task.projectId === projectId && task.id === id))
+        .map((task) =>
+          task.projectId === projectId && task.parentId === id
+            ? { ...task, parentId: null, updatedAt: now }
+            : task,
+        ),
+    },
+    result: { id, promotedChildIds: children.map((task) => task.id) },
   };
 }
 
@@ -106,15 +181,39 @@ export function listProjectTasks(
   document: ProjectTaskDocument,
   projectId: ProjectId,
 ): ReadonlyArray<ProjectTask> {
+  // Ties break on insertion order, not id. Agents file several tasks inside one
+  // millisecond, and sorting those by a random UUID makes a live board reshuffle
+  // rows for no reason the user can see.
   return document.tasks
-    .filter((task) => task.projectId === projectId)
-    .slice()
+    .map((task, index) => ({ task, index }))
+    .filter((entry) => entry.task.projectId === projectId)
     .sort((left, right) => {
-      if (left.createdAt !== right.createdAt) {
-        return left.createdAt.localeCompare(right.createdAt);
+      if (left.task.createdAt !== right.task.createdAt) {
+        return left.task.createdAt.localeCompare(right.task.createdAt);
       }
-      return left.id.localeCompare(right.id);
-    });
+      return left.index - right.index;
+    })
+    .map((entry) => entry.task);
+}
+
+/**
+ * Tasks a finished turn should advance to `review`.
+ *
+ * Only what this thread claimed and is still actively working. A task already
+ * in `review`, `blocked`, or `done` has moved on for a reason, and a turn that
+ * touched nothing has nothing to show a reviewer.
+ */
+export function selectTasksToReview(input: {
+  readonly tasks: ReadonlyArray<ProjectTask>;
+  readonly threadId: ThreadId;
+  readonly landedChanges: boolean;
+}): ReadonlyArray<ProjectTask> {
+  if (!input.landedChanges) {
+    return [];
+  }
+  return input.tasks.filter(
+    (task) => task.claimedThreadId === input.threadId && task.status === "doing",
+  );
 }
 
 export function claimProjectTask(
@@ -123,7 +222,7 @@ export function claimProjectTask(
   id: ProjectTaskId,
   threadId: ThreadId,
   now: string,
-): { readonly document: ProjectTaskDocument; readonly task: ProjectTask } {
+): { readonly document: ProjectTaskDocument; readonly result: ProjectTask } {
   return updateProjectTask(
     document,
     {

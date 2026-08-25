@@ -63,6 +63,8 @@ import {
   OrchestrationEngineService,
   type OrchestrationEngineShape,
 } from "../src/orchestration/Services/OrchestrationEngine.ts";
+import { ProjectTaskReactor } from "../src/orchestration/Services/ProjectTaskReactor.ts";
+import * as ProjectTaskStore from "../src/projectTasks/ProjectTaskStore.ts";
 import { ThreadDeletionReactor } from "../src/orchestration/Services/ThreadDeletionReactor.ts";
 import { OrchestrationReactor } from "../src/orchestration/Services/OrchestrationReactor.ts";
 import { ProjectionSnapshotQuery } from "../src/orchestration/Services/ProjectionSnapshotQuery.ts";
@@ -377,6 +379,12 @@ export const makeOrchestrationIntegrationHarness = (
         }),
       ),
       Layer.provideMerge(
+        Layer.succeed(ProjectTaskReactor, {
+          start: () => Effect.void,
+          drain: Effect.void,
+        }),
+      ),
+      Layer.provideMerge(
         Layer.succeed(AgentAwarenessRelay.AgentAwarenessRelay, {
           publishThread: () => Effect.void,
           start: () => Effect.void,
@@ -390,6 +398,7 @@ export const makeOrchestrationIntegrationHarness = (
       Layer.provide(persistenceLayer),
       Layer.provideMerge(RepositoryIdentityResolver.layer),
       Layer.provideMerge(ServerSettingsService.layerTest()),
+      Layer.provideMerge(ProjectTaskStore.layerMemory),
       Layer.provideMerge(ServerConfig.layerTest(workspaceDir, rootDir)),
       Layer.provideMerge(NodeServices.layer),
     );

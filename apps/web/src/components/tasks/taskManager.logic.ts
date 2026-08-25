@@ -3,6 +3,7 @@ import type { ProjectTask, ProjectTaskStatus } from "@t3tools/contracts";
 export const TASK_STATUS_ORDER: ReadonlyArray<ProjectTaskStatus> = [
   "open",
   "doing",
+  "review",
   "blocked",
   "done",
 ];
@@ -10,6 +11,7 @@ export const TASK_STATUS_ORDER: ReadonlyArray<ProjectTaskStatus> = [
 export const TASK_STATUS_LABEL: Record<ProjectTaskStatus, string> = {
   open: "Open",
   doing: "Doing",
+  review: "Review",
   blocked: "Blocked",
   done: "Done",
 };

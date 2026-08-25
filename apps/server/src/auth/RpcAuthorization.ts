@@ -49,6 +49,8 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.projectTasksList]: AuthOrchestrationReadScope,
   [WS_METHODS.projectTasksCreate]: AuthOrchestrationOperateScope,
   [WS_METHODS.projectTasksUpdate]: AuthOrchestrationOperateScope,
+  [WS_METHODS.projectTasksDelete]: AuthOrchestrationOperateScope,
+  [WS_METHODS.subscribeProjectTasks]: AuthOrchestrationReadScope,
   [WS_METHODS.serverSignalProcess]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverReportClientActivity]: AuthOrchestrationReadScope,
   [WS_METHODS.serverReportHostPowerState]: AuthOrchestrationOperateScope,

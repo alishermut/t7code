@@ -20,7 +20,7 @@ export function SessionLinkedTask({
 }) {
   const navigate = useNavigate();
   const listResult = useAtomValue(
-    projectTaskEnvironment.list({
+    projectTaskEnvironment.watch({
       environmentId,
       input: { projectId: ProjectId.make(projectId) },
     }),

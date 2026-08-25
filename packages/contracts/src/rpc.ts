@@ -208,6 +208,9 @@ import { VcsError } from "./vcs.ts";
 import {
   ProjectTask,
   ProjectTaskCreateInput,
+  ProjectTaskCreateResult,
+  ProjectTaskDeleteInput,
+  ProjectTaskDeleteResult,
   ProjectTaskError,
   ProjectTaskListInput,
   ProjectTaskListResult,
@@ -303,6 +306,8 @@ export const WS_METHODS = {
   projectTasksList: "projectTasks.list",
   projectTasksCreate: "projectTasks.create",
   projectTasksUpdate: "projectTasks.update",
+  projectTasksDelete: "projectTasks.delete",
+  subscribeProjectTasks: "subscribeProjectTasks",
 
   // Cloud environment methods
   cloudGetRelayClientStatus: "cloud.getRelayClientStatus",
@@ -473,13 +478,26 @@ export const WsProjectTasksListRpc = Rpc.make(WS_METHODS.projectTasksList, {
 
 export const WsProjectTasksCreateRpc = Rpc.make(WS_METHODS.projectTasksCreate, {
   payload: ProjectTaskCreateInput,
-  success: ProjectTask,
+  success: ProjectTaskCreateResult,
   error: Schema.Union([ProjectTaskError, EnvironmentAuthorizationError]),
 });
 
 export const WsProjectTasksUpdateRpc = Rpc.make(WS_METHODS.projectTasksUpdate, {
   payload: ProjectTaskUpdateInput,
   success: ProjectTask,
+  error: Schema.Union([ProjectTaskError, EnvironmentAuthorizationError]),
+});
+
+export const WsSubscribeProjectTasksRpc = Rpc.make(WS_METHODS.subscribeProjectTasks, {
+  payload: ProjectTaskListInput,
+  success: ProjectTaskListResult,
+  error: Schema.Union([ProjectTaskError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
+export const WsProjectTasksDeleteRpc = Rpc.make(WS_METHODS.projectTasksDelete, {
+  payload: ProjectTaskDeleteInput,
+  success: ProjectTaskDeleteResult,
   error: Schema.Union([ProjectTaskError, EnvironmentAuthorizationError]),
 });
 
@@ -1077,6 +1095,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsProjectTasksListRpc,
   WsProjectTasksCreateRpc,
   WsProjectTasksUpdateRpc,
+  WsProjectTasksDeleteRpc,
+  WsSubscribeProjectTasksRpc,
   WsServerSignalProcessRpc,
   WsServerReportClientActivityRpc,
   WsServerReportHostPowerStateRpc,

@@ -3,6 +3,7 @@ import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   ProjectId,
   type ProjectTask,
+  type ProjectTaskHealthEntry,
   type ProjectTaskStatus,
   type ThreadId,
 } from "@t3tools/contracts";
@@ -17,7 +18,7 @@ import { cn } from "../../lib/utils";
 import { useProjects, useThreadShells } from "../../state/entities";
 import { projectTaskEnvironment } from "../../state/projectTasks";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { useAtomQueryRunner } from "../../state/use-atom-query-runner";
+import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { buildThreadRouteParams } from "../../threadRoutes";
 import { Button } from "../ui/button";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
@@ -32,7 +33,10 @@ import { TaskEditorDialog, type TaskEditorDraft } from "./TaskEditorDialog";
 import { buildTaskRows, groupTaskRowsByStatus, TASK_STATUS_LABEL } from "./taskManager.logic";
 
 const EMPTY_TASK_LIST_ATOM = Atom.make(
-  AsyncResult.success({ tasks: [] as ReadonlyArray<ProjectTask> }),
+  AsyncResult.success({
+    tasks: [] as ReadonlyArray<ProjectTask>,
+    health: [] as ReadonlyArray<ProjectTaskHealthEntry>,
+  }),
 ).pipe(Atom.keepAlive, Atom.withLabel("web-project-tasks:empty"));
 
 function projectKeyOf(project: { readonly environmentId: string; readonly id: string }): string {
@@ -77,7 +81,7 @@ export function TaskManagerPage() {
           input: { projectId: ProjectId.make(selectedProject.id) },
         };
   const listResult = useAtomValue(
-    listTarget === null ? EMPTY_TASK_LIST_ATOM : projectTaskEnvironment.list(listTarget),
+    listTarget === null ? EMPTY_TASK_LIST_ATOM : projectTaskEnvironment.watch(listTarget),
   );
   const listError = listTarget === null ? null : readListError(listResult);
   const listPending =
@@ -89,20 +93,21 @@ export function TaskManagerPage() {
     return Option.getOrElse(AsyncResult.value(listResult), () => ({ tasks: [] })).tasks;
   }, [listResult]);
   const grouped = useMemo(() => groupTaskRowsByStatus(buildTaskRows(tasks)), [tasks]);
+  const health = useMemo((): ReadonlyArray<ProjectTaskHealthEntry> => {
+    if (!AsyncResult.isSuccess(listResult)) {
+      return [];
+    }
+    return Option.getOrElse(AsyncResult.value(listResult), () => ({
+      health: [] as ReadonlyArray<ProjectTaskHealthEntry>,
+    })).health;
+  }, [listResult]);
   const threadTitleById = useMemo(
     () => new Map(threads.map((thread) => [thread.id, thread.title])),
     [threads],
   );
   const createTask = useAtomCommand(projectTaskEnvironment.create, "Create task");
   const updateTask = useAtomCommand(projectTaskEnvironment.update, "Update task");
-  const reloadList = useAtomQueryRunner(projectTaskEnvironment.list, "Reload tasks");
-
-  const refresh = async () => {
-    if (listTarget !== null) {
-      await reloadList(listTarget);
-    }
-  };
-
+  const deleteTask = useAtomCommand(projectTaskEnvironment.remove, "Delete task");
   const saveEditor = async (draft: TaskEditorDraft) => {
     if (selectedProject === null || editor === null) {
       return;
@@ -125,10 +130,20 @@ export function TaskManagerPage() {
           id: editor.task.id,
           title: draft.title,
           notes: draft.notes,
+          status: draft.status,
         },
       });
     }
-    await refresh();
+  };
+
+  const removeTask = async (task: ProjectTask) => {
+    if (selectedProject === null) {
+      return;
+    }
+    await deleteTask({
+      environmentId: selectedProject.environmentId,
+      input: { projectId: task.projectId, id: task.id },
+    });
   };
 
   const setStatus = async (task: ProjectTask, status: ProjectTaskStatus) => {
@@ -139,7 +154,6 @@ export function TaskManagerPage() {
       environmentId: selectedProject.environmentId,
       input: { projectId: task.projectId, id: task.id, status },
     });
-    await refresh();
   };
 
   const openLinkedSession = (event: MouseEvent, threadId: ThreadId) => {
@@ -218,6 +232,23 @@ export function TaskManagerPage() {
           ) : null}
         </div>
 
+        {selectedProject !== null && health.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            <span>Agents reaching this backlog:</span>
+            {health.map((entry) => (
+              <span
+                key={entry.providerInstanceId}
+                className="inline-flex items-center gap-1 rounded-full border border-border/70 px-2 py-0.5"
+              >
+                <span className="size-1.5 rounded-full bg-foreground/50" />
+                {entry.providerInstanceId}
+                <span className="text-muted-foreground/80">{entry.lastTool}</span>
+                <span className="tabular-nums">{formatRelativeTimeLabel(entry.lastToolAt)}</span>
+              </span>
+            ))}
+          </div>
+        ) : null}
+
         {selectedProject === null ? (
           <p className="text-sm text-muted-foreground">Add a project to start a backlog.</p>
         ) : (
@@ -225,13 +256,20 @@ export function TaskManagerPage() {
             {listError ? (
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/70 bg-background px-3 py-2 text-sm">
                 <p className="text-muted-foreground">{listError}</p>
-                <Button type="button" size="sm" variant="outline" onClick={() => void refresh()}>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() =>
+                    setSelectedKey(selectedProject ? projectKeyOf(selectedProject) : null)
+                  }
+                >
                   Retry
                 </Button>
               </div>
             ) : null}
 
-            <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
               {grouped.map((group) => (
                 <section
                   key={group.status}
@@ -338,6 +376,7 @@ export function TaskManagerPage() {
             }
           }}
           onSubmit={saveEditor}
+          onDelete={editor.mode === "edit" ? () => removeTask(editor.task) : undefined}
         />
       ) : null}
     </SidebarInset>
