@@ -64,12 +64,13 @@ characters and uses SQLite's ASCII case-insensitive matching.
 The full command list and the current defaults are shown in **Settings** → **Keybindings**, which
 always matches the build you are running. Use that rather than a copied list.
 
-Note that `chat.new` and `chat.newLocal` both create a thread through the same path. A new thread
-inherits the project you were in, along with model and mode selections. Branch, worktree, and
-environment mode always come from your configured defaults, not from the thread you were looking
-at. To keep a worktree, use the explicit "new thread in this worktree" action in the branch
-toolbar. The only difference between the two commands: with the current sidebar and more than one
-project, `chat.new` opens a project chooser first.
+`chat.new` (and the sidebar plus) always opens a project chooser so you pick where the session
+starts. `chat.newLocal` and the thread tab bar plus skip the chooser and open a new session in the
+project you are already in. Sessions started from a new tab stay in that project and, when they
+share a space with the previous tab, cannot change project. A new thread still inherits model and
+mode selections from the thread you were looking at. Branch, worktree, and environment mode always
+come from your configured defaults. To keep a worktree, use the explicit "new thread in this
+worktree" action in the branch toolbar.
 
 Background submission from a new thread is the exception. `mod+enter` starts that thread and opens
 another new thread with the same workspace mode and base branch. **New worktree** remains selected,

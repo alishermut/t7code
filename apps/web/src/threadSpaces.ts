@@ -38,6 +38,14 @@ export function resolveThreadSpaceId(
   return assigned && assigned.length > 0 ? assigned : GENERAL_SPACE_ID;
 }
 
+export function isAssignedToCustomSpace(
+  threadKey: string | null,
+  assignments: Readonly<Record<string, string>>,
+): boolean {
+  if (threadKey === null) return false;
+  return resolveThreadSpaceId(threadKey, assignments) !== GENERAL_SPACE_ID;
+}
+
 export function listSpacesForProject(
   spaces: ReadonlyArray<ThreadSpace> | undefined,
 ): ReadonlyArray<ThreadSpace> {
