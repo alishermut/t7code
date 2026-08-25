@@ -264,6 +264,42 @@ function extractToolCallCommand(rawInput: unknown, title: string | undefined): s
   return extractCommandFromTitle(title);
 }
 
+function isSessionFileUri(value: string): boolean {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return false;
+  if (/^(?:https?:|data:|blob:)/i.test(trimmed)) return false;
+  return true;
+}
+
+function collectGeneratedMediaPathsFromToolCallContent(
+  content: ReadonlyArray<EffectAcpSchema.ToolCallContent> | null | undefined,
+): string[] {
+  if (!content) return [];
+  const paths: string[] = [];
+  const seen = new Set<string>();
+  const push = (value: string | null | undefined) => {
+    if (value == null || !isSessionFileUri(value) || seen.has(value)) return;
+    seen.add(value);
+    paths.push(value);
+  };
+  for (const entry of content) {
+    if (entry.type === "diff") {
+      push(entry.path);
+      continue;
+    }
+    if (entry.type !== "content") continue;
+    const nested = entry.content;
+    if (nested.type === "image") {
+      push(nested.uri);
+      continue;
+    }
+    if (nested.type === "resource_link") {
+      push(nested.uri);
+    }
+  }
+  return paths;
+}
+
 function extractTextContentFromToolCallContent(
   content: ReadonlyArray<EffectAcpSchema.ToolCallContent> | null | undefined,
 ): string | undefined {
@@ -327,6 +363,7 @@ function makeToolCallState(
   const title = input.title?.trim() || undefined;
   const command = extractToolCallCommand(input.rawInput, title);
   const textContent = extractTextContentFromToolCallContent(input.content);
+  const generatedMediaPaths = collectGeneratedMediaPathsFromToolCallContent(input.content);
   const normalizedTitle =
     title && title.toLowerCase() !== "terminal" && title.toLowerCase() !== "tool call"
       ? title
@@ -350,6 +387,9 @@ function makeToolCallState(
   }
   if (input.locations !== undefined) {
     data.locations = input.locations;
+  }
+  if (generatedMediaPaths.length > 0) {
+    data.files = generatedMediaPaths.map((path) => ({ path }));
   }
   const fallbackDetail = command ?? normalizedTitle ?? textContent;
   const hasPresentationSeed =

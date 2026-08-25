@@ -6,6 +6,10 @@ import {
   type TurnId,
 } from "@t3tools/contracts";
 import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
+import {
+  generatedMediaNotInMarkdown,
+  harvestGeneratedMedia,
+} from "@t3tools/client-runtime/generated-media";
 import type { AgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
 import {
   emptyAgentPanelModel,
@@ -44,6 +48,7 @@ import {
   resolveFileDiffPath,
 } from "../../lib/diffRendering";
 import ChatMarkdown from "../ChatMarkdown";
+import { GeneratedMediaStrip } from "./GeneratedMediaStrip";
 import {
   BotIcon,
   CheckIcon,
@@ -1137,6 +1142,13 @@ function TurnFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "turn-
 function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
   const messageText = row.message.text || (row.message.streaming ? "" : "(empty response)");
+  const harvestedMedia = harvestGeneratedMedia({
+    markdownText: messageText,
+    checkpointPaths: row.assistantTurnDiffSummary?.files.map((file) => file.path),
+    toolPaths: row.turnToolMediaPaths,
+    workspaceRoot: ctx.markdownCwd ?? ctx.workspaceRoot,
+  });
+  const extraMedia = generatedMediaNotInMarkdown(harvestedMedia);
 
   return (
     <>
@@ -1149,6 +1161,9 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
           lineBreaks={shouldPreserveAssistantLineBreaks(messageText)}
           skills={ctx.skills}
         />
+        {ctx.threadRef && extraMedia.length > 0 ? (
+          <GeneratedMediaStrip threadRef={ctx.threadRef} items={extraMedia} />
+        ) : null}
         <AssistantChangedFilesSection
           turnSummary={row.assistantTurnDiffSummary}
           routeThreadKey={ctx.routeThreadKey}

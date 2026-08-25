@@ -20,6 +20,7 @@ import {
   type AtomCommandResult,
 } from "@t3tools/client-runtime/state/runtime";
 import { classifyMarkdownImageSource } from "@t3tools/client-runtime/markdown-images";
+import { isWorkspaceVideoPreviewPath } from "@t3tools/shared/filePreview";
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/unstable/reactivity";
 import React, {
@@ -1033,6 +1034,43 @@ const ChatMarkdownWorkspaceImage = memo(function ChatMarkdownWorkspaceImage(prop
   );
 });
 
+const ChatMarkdownWorkspaceVideo = memo(function ChatMarkdownWorkspaceVideo(props: {
+  readonly threadRef: ScopedThreadRef;
+  readonly path: string;
+  readonly alt: string;
+}) {
+  const assetUrl = useAssetUrlState(props.threadRef.environmentId, {
+    _tag: "workspace-file",
+    threadId: props.threadRef.threadId,
+    path: props.path,
+  });
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+
+  if (assetUrl._tag === "Failure" || (assetUrl._tag === "Success" && failedUrl === assetUrl.url)) {
+    return <ChatMarkdownImageFallback alt={props.alt} />;
+  }
+  if (assetUrl._tag !== "Success") {
+    return (
+      <span
+        role="status"
+        aria-label="Loading video"
+        className="my-1 block aspect-video w-full max-w-[30rem] rounded-lg bg-muted/60"
+      />
+    );
+  }
+  return (
+    <video
+      src={assetUrl.url}
+      aria-label={props.alt}
+      controls
+      playsInline
+      preload="metadata"
+      className={CHAT_MARKDOWN_WORKSPACE_IMAGE_CLASS_NAME}
+      onError={() => setFailedUrl(assetUrl.url)}
+    />
+  );
+});
+
 function leadingExternalLinkTextLength(text: string): number {
   const protocol = /^(?:https?:\/\/)/i.exec(text)?.[0];
   if (protocol) return protocol.length;
@@ -1834,6 +1872,15 @@ function ChatMarkdown({
           );
         }
         if (imageSource._tag === "WorkspaceFile" && threadRef) {
+          if (isWorkspaceVideoPreviewPath(imageSource.path)) {
+            return (
+              <ChatMarkdownWorkspaceVideo
+                threadRef={threadRef}
+                path={imageSource.path}
+                alt={altText}
+              />
+            );
+          }
           return (
             <ChatMarkdownWorkspaceImage
               threadRef={threadRef}

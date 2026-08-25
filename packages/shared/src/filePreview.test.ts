@@ -2,8 +2,10 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   isWorkspaceBrowserPreviewPath,
+  isWorkspaceGeneratedMediaPath,
   isWorkspaceImagePreviewPath,
   isWorkspacePreviewEntryPath,
+  isWorkspaceVideoPreviewPath,
 } from "./filePreview.ts";
 
 describe("workspace file previews", () => {
@@ -27,10 +29,20 @@ describe("workspace file previews", () => {
     expect(isWorkspacePreviewEntryPath(path)).toBe(true);
   });
 
+  it.each(["clip.mp4", "take.WEBM", "shot.mov?download=1"])(
+    "recognizes video preview path %s",
+    (path) => {
+      expect(isWorkspaceVideoPreviewPath(path)).toBe(true);
+      expect(isWorkspaceGeneratedMediaPath(path)).toBe(true);
+      expect(isWorkspacePreviewEntryPath(path)).toBe(true);
+    },
+  );
+
   it.each(["README.md", "src/index.ts", "image.png.ts", "png"])(
     "rejects non-preview path %s",
     (path) => {
       expect(isWorkspacePreviewEntryPath(path)).toBe(false);
+      expect(isWorkspaceGeneratedMediaPath(path)).toBe(false);
     },
   );
 });
