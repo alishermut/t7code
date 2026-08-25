@@ -2539,3 +2539,27 @@ code {
     transform: scaleX(0.9);
   }
 }
+
+/*
+ * Pixel-grid loader (PixelGridLoader.tsx). Cells rest dim and brighten as the
+ * chevron wavefront reaches them; only `opacity` animates, so the whole grid
+ * stays on the compositor rather than repainting.
+ */
+@keyframes pixel-on {
+  0%,
+  100% {
+    opacity: 0.18;
+  }
+  45% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Only the running grid needs freezing; the still states already carry an
+     explicit opacity and must keep it. */
+  [data-pixel-grid-cell="running"] {
+    animation: none !important;
+    opacity: 0.35;
+  }
+}
