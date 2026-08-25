@@ -86,6 +86,8 @@ export function useNewThreadHandler() {
          * keep mint-fresh semantics.
          */
         carryComposerContent?: boolean;
+        /** Lock this draft to its project (new tab / space-bound session). */
+        lockProject?: boolean;
       },
       // Which draft the thread ended up in, so a caller that has something to put in it — a
       // prepared checkout, a task to write — addresses that one rather than looking the project
@@ -207,6 +209,8 @@ export function useNewThreadHandler() {
       const hasWorktreePathOption = options?.worktreePath !== undefined;
       const hasEnvModeOption = options?.envMode !== undefined;
       const hasStartFromOriginOption = options?.startFromOrigin !== undefined;
+      const projectLockFields =
+        options?.lockProject === true ? { projectLocked: true as const } : {};
       const storedDraftThread = getDraftSessionByLogicalProjectKey(logicalProjectKey);
       const storedDraftThreadRef = storedDraftThread
         ? scopeThreadRef(storedDraftThread.environmentId, storedDraftThread.threadId)
@@ -341,6 +345,7 @@ export function useNewThreadHandler() {
               ...workspaceContext,
               ...(carryRuntimeMode ? { runtimeMode: carryRuntimeMode } : {}),
               ...(carryInteractionMode ? { interactionMode: carryInteractionMode } : {}),
+              ...projectLockFields,
             },
           );
           carryComposerContentTo(emptyStoredDraftThread.draftId);
@@ -390,6 +395,7 @@ export function useNewThreadHandler() {
           runtimeMode: latestActiveDraftThread.runtimeMode,
           interactionMode: latestActiveDraftThread.interactionMode,
           ...pickExplicitWorkspaceOptions(options),
+          ...projectLockFields,
         });
         return Promise.resolve({
           draftId: currentRouteTarget.draftId,
@@ -430,6 +436,7 @@ export function useNewThreadHandler() {
             runtimeMode: racedDraft.runtimeMode,
             interactionMode: racedDraft.interactionMode,
             ...pickExplicitWorkspaceOptions(options),
+            ...projectLockFields,
           });
           carryComposerContentTo(racedDraft.draftId);
           await router.navigate({
@@ -453,6 +460,7 @@ export function useNewThreadHandler() {
             }),
           runtimeMode: carryRuntimeMode ?? DEFAULT_RUNTIME_MODE,
           ...(carryInteractionMode ? { interactionMode: carryInteractionMode } : {}),
+          ...projectLockFields,
         });
         applyStickyState(draftId);
         const modelSelectionOverride = resolveModelSelectionOverride(draftId);

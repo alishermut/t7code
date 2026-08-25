@@ -1569,6 +1569,25 @@ describe("composerDraftStore project draft thread mapping", () => {
     expect(useComposerDraftStore.getState().getDraftThread(draftId)?.startFromOrigin).toBe(false);
   });
 
+  it("locks a draft to its project and ignores later project changes", () => {
+    const store = useComposerDraftStore.getState();
+    store.setProjectDraftThreadId(projectRef, draftId, {
+      threadId,
+      projectLocked: true,
+    });
+
+    expect(useComposerDraftStore.getState().getDraftThread(draftId)?.projectLocked).toBe(true);
+
+    store.setDraftThreadContext(draftId, {
+      projectRef: scopeProjectRef(TEST_ENVIRONMENT_ID, ProjectId.make("other-project")),
+    });
+
+    expect(useComposerDraftStore.getState().getDraftThread(draftId)).toMatchObject({
+      projectId,
+      projectLocked: true,
+    });
+  });
+
   it("preserves existing branch and worktree when setProjectDraftThreadId receives undefined", () => {
     const store = useComposerDraftStore.getState();
     store.setProjectDraftThreadId(projectRef, draftId, {

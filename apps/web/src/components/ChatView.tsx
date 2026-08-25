@@ -295,7 +295,12 @@ import { MessagesTimeline } from "./chat/MessagesTimeline";
 import { resolveTimelineIsAtEnd } from "./chat/MessagesTimeline.logic";
 import { ChatHeader } from "./chat/ChatHeader";
 import { ThreadTabBar } from "./ThreadTabBar";
-import { GENERAL_SPACE_ID, resolveThreadSpaceId, visibleThreadTabKeys } from "../threadSpaces";
+import {
+  GENERAL_SPACE_ID,
+  isAssignedToCustomSpace,
+  resolveThreadSpaceId,
+  visibleThreadTabKeys,
+} from "../threadSpaces";
 import { PanelLayoutControls, RightPanelMaximizeControl } from "./chat/PanelLayoutControls";
 import { type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { NoActiveThreadState } from "./NoActiveThreadState";
@@ -1909,7 +1914,7 @@ function ChatViewContent(props: ChatViewProps) {
   const handleNewThreadTab = useCallback(() => {
     if (!activeProjectRef) return;
     void (async () => {
-      const result = await handleNewThread(activeProjectRef);
+      const result = await handleNewThread(activeProjectRef, { lockProject: true });
       if (!result || !activeThreadKey || !activeProject) return;
       const newThreadKey = scopedThreadKey(
         scopeThreadRef(activeProjectRef.environmentId, result.threadId),
@@ -7436,6 +7441,10 @@ function ChatViewContent(props: ChatViewProps) {
                       <DraftHeroHeadline
                         activeProjectRef={activeProjectRef}
                         activeProjectTitle={activeProject?.title ?? null}
+                        projectChangeAllowed={
+                          draftThread?.projectLocked !== true &&
+                          !isAssignedToCustomSpace(activeThreadKey, threadSpaceByThreadKey)
+                        }
                       />
                     </div>
                     <ComposerBannerStack className="relative z-0" items={composerBannerItems} />

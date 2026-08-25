@@ -28,11 +28,13 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 interface DraftHeroHeadlineProps {
   readonly activeProjectRef: ScopedProjectRef | null;
   readonly activeProjectTitle: string | null;
+  readonly projectChangeAllowed?: boolean;
 }
 
 export function DraftHeroHeadline({
   activeProjectRef,
   activeProjectTitle,
+  projectChangeAllowed = true,
 }: DraftHeroHeadlineProps) {
   const projects = useProjects();
   const threads = useThreadShells();
@@ -96,75 +98,79 @@ export function DraftHeroHeadline({
   const activeProjectDisplayName = activeProjectGroup?.displayName ?? activeProjectTitle;
   const hasResolvedProject = activeProjectTitle !== null;
   const canChooseProject = projectPickerEntries.length > 0;
-  const shouldShowProjectMenu = canChooseProject;
+  const shouldShowProjectMenu = projectChangeAllowed && canChooseProject;
+  const lockedProjectName = activeProjectDisplayName ?? activeProjectTitle;
 
-  const projectSelector = shouldShowProjectMenu ? (
-    <Menu>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <MenuTrigger
-              aria-label={hasResolvedProject ? "Change project" : "Choose a project"}
-              className="pointer-events-auto inline-block max-w-64 truncate border-foreground/60 border-b border-dotted align-baseline text-foreground transition-colors hover:border-foreground/80 focus-visible:rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-            />
-          }
-        >
-          {activeProjectDisplayName ?? "Choose a project"}
-        </TooltipTrigger>
-        {activeProjectDisplayName ? (
-          <TooltipPopup side="top" className="max-w-80">
-            {activeProjectDisplayName}
-          </TooltipPopup>
-        ) : null}
-      </Tooltip>
-      <MenuPopup align="center" className="max-h-80 min-w-40! w-max max-w-64 overflow-y-auto">
-        <MenuRadioGroup
-          value={activeProjectKey}
-          onValueChange={(value) => {
-            const entry = projectEntryByKey.get(value as string);
-            if (!entry || value === activeProjectKey) {
-              return;
+  const projectSelector =
+    !projectChangeAllowed && hasResolvedProject ? (
+      <span className="inline-block max-w-64 truncate align-baseline">{lockedProjectName}</span>
+    ) : shouldShowProjectMenu ? (
+      <Menu>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <MenuTrigger
+                aria-label={hasResolvedProject ? "Change project" : "Choose a project"}
+                className="pointer-events-auto inline-block max-w-64 truncate border-foreground/60 border-b border-dotted align-baseline text-foreground transition-colors hover:border-foreground/80 focus-visible:rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+              />
             }
-            const project = entry.targetProject;
-            // Changing the repo of a draft moves the typed content along:
-            // the user started writing in the wrong project, not a new task.
-            void handleNewThread(scopeProjectRef(project.environmentId, project.id), {
-              replace: true,
-              carryComposerContent: true,
-            });
-          }}
-        >
-          {projectPickerEntries.map(({ group }) => {
-            return (
-              <MenuRadioItem key={group.projectKey} value={group.projectKey} closeOnClick>
-                <Tooltip>
-                  <TooltipTrigger render={<span className="block min-w-0 truncate" />}>
-                    {group.displayName}
-                  </TooltipTrigger>
-                  <TooltipPopup side="top" className="max-w-80">
-                    {group.displayName}
-                  </TooltipPopup>
-                </Tooltip>
-              </MenuRadioItem>
-            );
-          })}
-        </MenuRadioGroup>
-        <MenuSeparator />
-        <MenuItem onClick={openAddProject}>
-          <FolderPlusIcon />
-          New project
-        </MenuItem>
-      </MenuPopup>
-    </Menu>
-  ) : (
-    <button
-      type="button"
-      onClick={openAddProject}
-      className="pointer-events-auto inline cursor-pointer border-muted-foreground/35 border-b border-dotted text-muted-foreground/60 transition-colors hover:border-muted-foreground/60 hover:text-muted-foreground/80 focus-visible:rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      {activeProjectTitle ?? "Add a project"}
-    </button>
-  );
+          >
+            {activeProjectDisplayName ?? "Choose a project"}
+          </TooltipTrigger>
+          {activeProjectDisplayName ? (
+            <TooltipPopup side="top" className="max-w-80">
+              {activeProjectDisplayName}
+            </TooltipPopup>
+          ) : null}
+        </Tooltip>
+        <MenuPopup align="center" className="max-h-80 min-w-40! w-max max-w-64 overflow-y-auto">
+          <MenuRadioGroup
+            value={activeProjectKey}
+            onValueChange={(value) => {
+              const entry = projectEntryByKey.get(value as string);
+              if (!entry || value === activeProjectKey) {
+                return;
+              }
+              const project = entry.targetProject;
+              // Changing the repo of a draft moves the typed content along:
+              // the user started writing in the wrong project, not a new task.
+              void handleNewThread(scopeProjectRef(project.environmentId, project.id), {
+                replace: true,
+                carryComposerContent: true,
+              });
+            }}
+          >
+            {projectPickerEntries.map(({ group }) => {
+              return (
+                <MenuRadioItem key={group.projectKey} value={group.projectKey} closeOnClick>
+                  <Tooltip>
+                    <TooltipTrigger render={<span className="block min-w-0 truncate" />}>
+                      {group.displayName}
+                    </TooltipTrigger>
+                    <TooltipPopup side="top" className="max-w-80">
+                      {group.displayName}
+                    </TooltipPopup>
+                  </Tooltip>
+                </MenuRadioItem>
+              );
+            })}
+          </MenuRadioGroup>
+          <MenuSeparator />
+          <MenuItem onClick={openAddProject}>
+            <FolderPlusIcon />
+            New project
+          </MenuItem>
+        </MenuPopup>
+      </Menu>
+    ) : (
+      <button
+        type="button"
+        onClick={openAddProject}
+        className="pointer-events-auto inline cursor-pointer border-muted-foreground/35 border-b border-dotted text-muted-foreground/60 transition-colors hover:border-muted-foreground/60 hover:text-muted-foreground/80 focus-visible:rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {activeProjectTitle ?? "Add a project"}
+      </button>
+    );
 
   return (
     <h1 className="mx-auto w-full max-w-5xl text-center font-normal text-2xl text-foreground tracking-tight sm:text-3xl">

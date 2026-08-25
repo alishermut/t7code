@@ -13,6 +13,7 @@ import {
   moveThreadToSpace,
   openThreadTab,
   renameSpace,
+  isAssignedToCustomSpace,
   resolveThreadSpaceId,
   visibleThreadTabKeys,
   wrapThreadsIntoSpace,
@@ -22,6 +23,9 @@ describe("thread spaces", () => {
   it("treats unassigned threads as General", () => {
     expect(resolveThreadSpaceId("env:thread-1", {})).toBe(GENERAL_SPACE_ID);
     expect(resolveThreadSpaceId("env:thread-1", { "env:thread-1": "space_a" })).toBe("space_a");
+    expect(isAssignedToCustomSpace(null, {})).toBe(false);
+    expect(isAssignedToCustomSpace("env:thread-1", {})).toBe(false);
+    expect(isAssignedToCustomSpace("env:thread-1", { "env:thread-1": "space_a" })).toBe(true);
   });
 
   it("always lists General ahead of custom spaces", () => {
