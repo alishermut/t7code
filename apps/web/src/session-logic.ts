@@ -1772,6 +1772,9 @@ function collectChangedFiles(value: unknown, target: string[], seen: Set<string>
   pushChangedFile(target, seen, record.filename);
   pushChangedFile(target, seen, record.newPath);
   pushChangedFile(target, seen, record.oldPath);
+  // Codex names the file on its `imageGeneration` item `savedPath`. Kept in
+  // step with the server's copy of this walk in ActivityPayloadProjection.ts.
+  pushChangedFile(target, seen, record.savedPath);
 
   for (const nestedKey of [
     "item",
