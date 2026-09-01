@@ -1206,11 +1206,15 @@ function TurnFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "turn-
 function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
   const messageText = row.message.text || (row.message.streaming ? "" : "(empty response)");
+  // `exactOptionalPropertyTypes` rejects an explicit `undefined` for an
+  // optional field, so absent inputs are omitted rather than passed as
+  // undefined.
+  const checkpointPaths = row.assistantTurnDiffSummary?.files.map((file) => file.path);
   const harvestedMedia = harvestGeneratedMedia({
     markdownText: messageText,
-    checkpointPaths: row.assistantTurnDiffSummary?.files.map((file) => file.path),
-    toolPaths: row.turnToolMediaPaths,
-    workspaceRoot: ctx.markdownCwd ?? ctx.workspaceRoot,
+    ...(checkpointPaths === undefined ? {} : { checkpointPaths }),
+    ...(row.turnToolMediaPaths === undefined ? {} : { toolPaths: row.turnToolMediaPaths }),
+    workspaceRoot: ctx.markdownCwd ?? ctx.workspaceRoot ?? null,
   });
   const extraMedia = generatedMediaNotInMarkdown(harvestedMedia);
 

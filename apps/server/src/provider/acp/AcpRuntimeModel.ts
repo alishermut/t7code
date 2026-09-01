@@ -300,6 +300,77 @@ function collectGeneratedMediaPathsFromToolCallContent(
   return paths;
 }
 
+const TOOL_CALL_CONTENT_MAX_CHARS = 8_000;
+const TOOL_CALL_CONTENT_TRUNCATION_MARKER = "[Earlier output truncated]\n\n";
+
+function boundToolCallOutputText(text: string): string {
+  if (text.length <= TOOL_CALL_CONTENT_MAX_CHARS) {
+    return text;
+  }
+  const tail = text.slice(text.length - TOOL_CALL_CONTENT_MAX_CHARS);
+  return `${TOOL_CALL_CONTENT_TRUNCATION_MARKER}${tail}`;
+}
+
+const RAW_OUTPUT_TEXT_FIELDS = ["content", "stdout", "stderr", "output"] as const;
+
+// `rawOutput` is provider-defined and, for terminal-shaped tools, mirrors the same
+// cumulative text-growth problem as `content` (see the comment above). Bound its known
+// text-bearing fields the same way so a chatty provider cannot smuggle unbounded output
+// through this field instead.
+function boundToolCallRawOutput(rawOutput: unknown): unknown {
+  if (!isRecord(rawOutput)) {
+    return rawOutput;
+  }
+  let changed = false;
+  const bounded: Record<string, unknown> = { ...rawOutput };
+  for (const field of RAW_OUTPUT_TEXT_FIELDS) {
+    const value = rawOutput[field];
+    if (typeof value === "string" && value.length > TOOL_CALL_CONTENT_MAX_CHARS) {
+      bounded[field] = boundToolCallOutputText(value);
+      changed = true;
+    }
+  }
+  return changed ? bounded : rawOutput;
+}
+
+interface ExtractedToolCallContent {
+  readonly text: string | undefined;
+  readonly content: ReadonlyArray<EffectAcpSchema.ToolCallContent> | undefined;
+}
+
+function toolCallContentText(entry: EffectAcpSchema.ToolCallContent): string | undefined {
+  if (entry.type !== "content" || entry.content.type !== "text") {
+    return undefined;
+  }
+  return entry.content.text;
+}
+
+// Trim is used for display `text`, so whitespace-only (or whitespace-padded) entries never
+// contribute to `chunks` and used to take the early returns with the original array. Bound
+// each text entry independently so those paths cannot persist an unbounded terminal buffer
+// on `toolCall.data.content` / `rawPayload`.
+function boundToolCallContentEntries(
+  content: ReadonlyArray<EffectAcpSchema.ToolCallContent>,
+): ReadonlyArray<EffectAcpSchema.ToolCallContent> {
+  let changed = false;
+  const bounded = content.map((entry) => {
+    const text = toolCallContentText(entry);
+    if (text === undefined || text.length <= TOOL_CALL_CONTENT_MAX_CHARS) {
+      return entry;
+    }
+    changed = true;
+    const trimmed = text.trim();
+    return {
+      type: "content",
+      content: {
+        type: "text",
+        text: boundToolCallOutputText(trimmed.length > 0 ? trimmed : text),
+      },
+    } as const;
+  });
+  return changed ? bounded : content;
+}
+
 function extractTextContentFromToolCallContent(
   content: ReadonlyArray<EffectAcpSchema.ToolCallContent> | null | undefined,
 ): ExtractedToolCallContent {
@@ -425,7 +496,8 @@ function makeToolCallState(
   }
   const title = input.title?.trim() || undefined;
   const command = extractToolCallCommand(input.rawInput, title);
-  const textContent = extractTextContentFromToolCallContent(input.content);
+  const extractedContent = extractTextContentFromToolCallContent(input.content);
+  const textContent = extractedContent.text;
   const generatedMediaPaths = collectGeneratedMediaPathsFromToolCallContent(input.content);
   const normalizedTitle =
     title && title.toLowerCase() !== "terminal" && title.toLowerCase() !== "tool call"
