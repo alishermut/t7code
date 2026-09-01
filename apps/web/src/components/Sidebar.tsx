@@ -129,6 +129,7 @@ import {
 import { formatRelativeTimeLabel, parseTimestampDate } from "../timestampFormat";
 import type { SidebarThreadSummary } from "../types";
 import { PixelGridLoader, type PixelGridState } from "./PixelGridLoader";
+import { useComboboxFilter } from "./ui/combobox";
 import { cn } from "~/lib/utils";
 import { buildThreadActionMenuItems } from "./threadActionMenu.logic";
 import {
@@ -3467,7 +3468,10 @@ export default function Sidebar() {
               <span className="min-w-0 flex-1 truncate">Tasks</span>
             </SidebarMenuButton>
             {projectGroups.length > 0 ? (
-              <Menu open={projectScopeMenuOpen} onOpenChange={setProjectScopeMenuOpen}>
+              <Menu
+                open={projectScopeMenuState.open}
+                onOpenChange={(open) => dispatchProjectScopeMenu({ type: "open-changed", open })}
+              >
                 <MenuTrigger
                   render={
                     <SidebarMenuButton
@@ -3619,7 +3623,9 @@ export default function Sidebar() {
                       wokeAt={threadWokeAt(thread, { now: snoozeNow })}
                       isActive={routeThreadKey === threadKey}
                       openPullRequestsInRightPanel={routeThreadRef !== null}
-                      jumpLabel={showJumpHints ? (jumpLabelByKey.get(threadKey) ?? null) : null}
+                      jumpLabel={
+                        showThreadJumpHints ? (jumpLabelByKey.get(threadKey) ?? null) : null
+                      }
                       currentEnvironmentId={primaryEnvironmentId}
                       environmentLabel={environmentLabelById.get(thread.environmentId) ?? null}
                       projectCwd={
