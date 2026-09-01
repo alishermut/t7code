@@ -840,3 +840,85 @@ describe("AcpRuntimeModel", () => {
     });
   });
 });
+
+/**
+ * Frames below are trimmed from a real `grok agent stdio` session: the agent
+ * drew a PNG with PIL, then read it back to check its work. Grok sends the
+ * bytes with no uri, on a frame that has already dropped the path.
+ */
+describe("generated media from an image tool call without a uri", () => {
+  const framesFor = (toolCallId: string) =>
+    [
+      {
+        sessionUpdate: "tool_call",
+        toolCallId,
+        title: "read_file",
+        rawInput: { target_file: "/repo/red-circle.png" },
+      },
+      {
+        sessionUpdate: "tool_call_update",
+        toolCallId,
+        title: "Read `/repo/red-circle.png`",
+        kind: "read",
+        locations: [{ path: "/repo/red-circle.png" }],
+        rawInput: { variant: "ReadFile", target_file: "/repo/red-circle.png" },
+      },
+      {
+        sessionUpdate: "tool_call_update",
+        toolCallId,
+        status: "completed",
+        content: [
+          { type: "content", content: { type: "image", data: "aGVsbG8=", mimeType: "image/png" } },
+        ],
+      },
+    ] as ReadonlyArray<EffectAcpSchema.SessionNotification["update"]>;
+
+  const mergeFrames = (frames: ReadonlyArray<EffectAcpSchema.SessionNotification["update"]>) => {
+    let merged: ReturnType<typeof mergeToolCallState> | undefined;
+    for (const update of frames) {
+      const { events } = parseSessionUpdateEvent({
+        sessionId: "session-1",
+        update,
+      } as EffectAcpSchema.SessionNotification);
+      for (const event of events) {
+        if (event._tag !== "ToolCallUpdated") continue;
+        merged = mergeToolCallState(merged, event.toolCall);
+      }
+    }
+    return merged;
+  };
+
+  it("recovers the file the image came from, so the timeline can render it", () => {
+    expect(mergeFrames(framesFor("tool-image"))?.data.files).toEqual([
+      { path: "/repo/red-circle.png" },
+    ]);
+  });
+
+  it("leaves a tool call that returned no image alone", () => {
+    const frames = framesFor("tool-plain").slice(0, 2);
+    expect(mergeFrames(frames)?.data.files).toBeUndefined();
+  });
+
+  it("prefers an explicit uri over the fallback", () => {
+    const frames = [
+      ...framesFor("tool-uri").slice(0, 2),
+      {
+        sessionUpdate: "tool_call_update",
+        toolCallId: "tool-uri",
+        status: "completed",
+        content: [
+          {
+            type: "content",
+            content: {
+              type: "image",
+              data: "aGVsbG8=",
+              mimeType: "image/png",
+              uri: "/repo/from-uri.png",
+            },
+          },
+        ],
+      },
+    ] as ReadonlyArray<EffectAcpSchema.SessionNotification["update"]>;
+    expect(mergeFrames(frames)?.data.files).toEqual([{ path: "/repo/from-uri.png" }]);
+  });
+});

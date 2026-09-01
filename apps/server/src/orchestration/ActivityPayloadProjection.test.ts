@@ -44,6 +44,24 @@ describe("projectActivityPayload", () => {
     expect(data.somethingClientNeverReads).toBeUndefined();
   });
 
+  it("surfaces a Codex generated image as a file, so the timeline can render it", () => {
+    const projected = projectActivityPayload(
+      activity({
+        itemType: "image_view",
+        data: {
+          item: {
+            type: "imageGeneration",
+            status: "completed",
+            savedPath: "/repo/assets/hero-sunset.png",
+            revisedPrompt: "a golden sunset over a calm ocean",
+          },
+        },
+      }),
+    );
+    const data = (projected.payload as Record<string, unknown>).data as Record<string, unknown>;
+    expect(data.files).toEqual([{ path: "/repo/assets/hero-sunset.png" }]);
+  });
+
   it("keeps a bounded Codex command output summary", () => {
     const projected = projectActivityPayload(
       activity({

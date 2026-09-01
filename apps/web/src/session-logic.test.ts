@@ -1494,6 +1494,29 @@ describe("deriveWorkLogEntries", () => {
     ]);
   });
 
+  it("extracts the file Codex saved a generated image to", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "image-gen",
+        kind: "tool.completed",
+        summary: "Image",
+        payload: {
+          itemType: "image_view",
+          data: {
+            item: {
+              type: "imageGeneration",
+              status: "completed",
+              savedPath: "assets/hero-sunset.png",
+            },
+          },
+        },
+      }),
+    ];
+
+    const [entry] = deriveWorkLogEntries(activities);
+    expect(entry?.changedFiles).toEqual(["assets/hero-sunset.png"]);
+  });
+
   it("drops duplicated tool detail when it only repeats the title", () => {
     const activities: OrchestrationThreadActivity[] = [
       makeActivity({

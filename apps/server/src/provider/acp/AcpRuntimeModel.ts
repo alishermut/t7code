@@ -300,6 +300,59 @@ function collectGeneratedMediaPathsFromToolCallContent(
   return paths;
 }
 
+function asToolCallRecord(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+/** True when the call returned image bytes with no uri to render them from. */
+export function hasImageContentWithoutUri(content: unknown): boolean {
+  if (!Array.isArray(content)) return false;
+  return content.some((entry) => {
+    const wrapper = asToolCallRecord(entry);
+    const nested = asToolCallRecord(wrapper?.content) ?? wrapper;
+    return nested?.type === "image" && typeof nested.uri !== "string";
+  });
+}
+
+/**
+ * The file an image-bearing tool call was actually about.
+ *
+ * ACP's `ImageContent` requires `data` but only optionally carries `uri`, and
+ * agents observed in practice send the bytes with no uri at all — Grok returns
+ * base64 alone when it reads a generated PNG back. The path is still known, it
+ * just arrives on an earlier frame of the same tool call (`locations`, or the
+ * tool's own input), which `mergeToolCallState` has already folded into this
+ * state by the time the image lands. Reaching for it there is what lets a chart
+ * an agent drew with matplotlib or PIL render instead of vanishing into a
+ * collapsed tool row.
+ *
+ * Deliberately consulted only when a tool call produced an image: `locations`
+ * alone means "the agent touched this file", which is every read in the thread.
+ */
+export function toolCallFileFallbackPath(input: {
+  readonly locations?: unknown;
+  readonly rawInput?: unknown;
+}): string | undefined {
+  if (Array.isArray(input.locations)) {
+    for (const location of input.locations) {
+      const candidate = asToolCallRecord(location)?.path;
+      if (typeof candidate === "string" && candidate.trim().length > 0) {
+        return candidate.trim();
+      }
+    }
+  }
+  const rawInput = asToolCallRecord(input.rawInput);
+  for (const key of ["target_file", "path", "file_path", "filePath"]) {
+    const candidate = rawInput?.[key];
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
+      return candidate.trim();
+    }
+  }
+  return undefined;
+}
+
 const TOOL_CALL_CONTENT_MAX_CHARS = 8_000;
 const TOOL_CALL_CONTENT_TRUNCATION_MARKER = "[Earlier output truncated]\n\n";
 
@@ -585,6 +638,22 @@ export function mergeToolCallState(
   const status = next.status ?? previous?.status;
   const command = next.command ?? previous?.command;
   const detail = next.detail ?? previous?.detail;
+  const data: Record<string, unknown> = {
+    ...previous?.data,
+    ...next.data,
+  };
+  // An agent that draws a chart and reads it back sends the bytes with no uri,
+  // on a frame that no longer carries the path. Both halves have met by now, so
+  // recover the file here rather than lose the image to a collapsed tool row.
+  if (data.files === undefined && hasImageContentWithoutUri(data.content)) {
+    const fallbackPath = toolCallFileFallbackPath({
+      locations: data.locations,
+      rawInput: data.rawInput,
+    });
+    if (fallbackPath !== undefined && isSessionFileUri(fallbackPath)) {
+      data.files = [{ path: fallbackPath }];
+    }
+  }
   return {
     toolCallId: next.toolCallId,
     ...(kind ? { kind } : {}),
@@ -592,10 +661,7 @@ export function mergeToolCallState(
     ...(status ? { status } : {}),
     ...(command ? { command } : {}),
     ...(detail ? { detail } : {}),
-    data: {
-      ...previous?.data,
-      ...next.data,
-    },
+    data,
   };
 }
 

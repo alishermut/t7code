@@ -57,6 +57,10 @@ function collectChangedFiles(
   pushChangedFile(target, seen, record.filename);
   pushChangedFile(target, seen, record.newPath);
   pushChangedFile(target, seen, record.oldPath);
+  // Codex reports a generated image on its `imageGeneration` item as `savedPath`
+  // rather than `path`. Without this the file the model just wrote is invisible
+  // to the timeline, so nothing renders it and nothing can reveal it.
+  pushChangedFile(target, seen, record.savedPath);
 
   for (const nestedKey of [
     "item",
