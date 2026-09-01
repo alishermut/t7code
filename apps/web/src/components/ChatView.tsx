@@ -188,9 +188,9 @@ import {
   ChevronDownIcon,
   GitBranchIcon,
   MessageSquareIcon,
+  Minimize2Icon,
   PaperclipIcon,
   WifiOffIcon,
-  Minimize2Icon,
 } from "lucide-react";
 import { cn, randomHex } from "~/lib/utils";
 import { stackedThreadToast, toastManager } from "./ui/toast";
@@ -295,9 +295,6 @@ import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
 import { resolveTimelineIsAtEnd } from "./chat/MessagesTimeline.logic";
 import { ChatHeader } from "./chat/ChatHeader";
-import { resolveSidebarThreadStatus, type SidebarThreadStatus } from "./Sidebar.logic";
-import { BrowserTabBar } from "../browser/BrowserTabBar";
-import { buildBrowserTabs } from "../browser/browserTabBar.logic";
 import { ThreadTabBar } from "./ThreadTabBar";
 import {
   GENERAL_SPACE_ID,
@@ -1874,13 +1871,8 @@ function ChatViewContent(props: ChatViewProps) {
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
   const threadTabs = useMemo(() => {
     const titleByKey = new Map<string, string>();
-    // Tabs draw live status in their icon slot, so each needs its thread's
-    // resolved state, not just a title.
-    const statusByKey = new Map<string, SidebarThreadStatus>();
     for (const shell of threadShells) {
-      const key = scopedThreadKey(scopeThreadRef(shell.environmentId, shell.id));
-      titleByKey.set(key, shell.title);
-      statusByKey.set(key, resolveSidebarThreadStatus(shell));
+      titleByKey.set(scopedThreadKey(scopeThreadRef(shell.environmentId, shell.id)), shell.title);
     }
     if (activeThread && activeThreadKey) {
       titleByKey.set(activeThreadKey, activeThread.title);
@@ -1898,7 +1890,7 @@ function ChatViewContent(props: ChatViewProps) {
         spaceId === GENERAL_SPACE_ID
           ? null
           : (customSpaces.find((space) => space.id === spaceId)?.name ?? null);
-      return [{ threadKey, title, spaceName, status: statusByKey.get(threadKey) ?? "ready" }];
+      return [{ threadKey, title, spaceName }];
     });
   }, [
     activeThread,
@@ -7116,7 +7108,7 @@ function ChatViewContent(props: ChatViewProps) {
     ) : activeRightPanelSurface?.kind === "pull-request" && !supportsPullRequests ? (
       <PullRequestsUnavailableState
         title="Pull requests unavailable"
-        error="Update this environment's CraftCode server to browse pull requests."
+        error="Update this environment's T3 Code server to browse pull requests."
       />
     ) : activeRightPanelSurface?.kind === "pull-request" ? (
       // No onClose: the surface tab's own X owns closing here, and a second X in the header
@@ -7193,14 +7185,6 @@ function ChatViewContent(props: ChatViewProps) {
     activePreviewState.snapshot?.tabId ??
     Object.values(activePreviewState.sessions)[0]?.tabId ??
     null;
-  const browserTabs = useMemo(
-    () =>
-      buildBrowserTabs({
-        sessions: activePreviewState.sessions,
-        desktopByTabId: activePreviewState.desktopByTabId,
-      }),
-    [activePreviewState.desktopByTabId, activePreviewState.sessions],
-  );
   const editorWorkSurface =
     isEditorWorkspace && activeProject && activeWorkspaceRoot && activeThreadRef ? (
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -7243,22 +7227,6 @@ function ChatViewContent(props: ChatViewProps) {
   const browserWorkSurface =
     isBrowserWorkspace && activeThreadRef ? (
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <BrowserTabBar
-          tabs={browserTabs}
-          activeTabId={activeBrowserTabId}
-          onSelect={(tabId) => setActivePreviewTab(activeThreadRef, tabId)}
-          onClose={(tabId) => {
-            // The snapshot is what a failed close restores, so pass the one
-            // being closed rather than whichever tab happens to be active.
-            void closePreviewSession({
-              threadRef: activeThreadRef,
-              tabId,
-              snapshot: activePreviewState.sessions[tabId] ?? null,
-              closePreview,
-            });
-          }}
-          onNew={createBrowserSurface}
-        />
         <Suspense fallback={null}>
           <PreviewPanel
             mode="embedded"
